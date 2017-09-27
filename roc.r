@@ -181,23 +181,207 @@ above_quantile <- function(d, q, op = `>`){
     
 }
 
+in_screen <- function(d, sc, cl){
+    
+    return(
+        d %>%
+        filter(cls == cl & screen == sc) %>%
+        select(protein, uhgroup) %>%
+        group_by(protein, uhgroup) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        mutate(inn = TRUE)
+    )
+    
+}
+
+roc_conditions_by_hg <- function(){
+    
+    by_cols <- c('protein', 'uhgroup')
+    
+    d <- by_hg_df()
+    
+    inAI  <- in_screen(d, 'A', 'I')  %>% rename(in_ai  = inn)
+    inAII <- in_screen(d, 'A', 'II') %>% rename(in_aii = inn)
+    inEI  <- in_screen(d, 'E', 'I')  %>% rename(in_ei  = inn)
+    inEII <- in_screen(d, 'E', 'II') %>% rename(in_eii = inn)
+    
+    d <- d %>%
+        left_join(inAI,  by = by_cols) %>%
+        left_join(inAII, by = by_cols) %>%
+        left_join(inEI,  by = by_cols) %>%
+        left_join(inEII, by = by_cols) %>%
+        mutate(
+            in_ai  = !is.na(in_ai ),
+            in_aii = !is.na(in_aii),
+            in_ei  = !is.na(in_ei ),
+            in_eii = !is.na(in_eii)
+        )
+    
+    d_any  <- d %>%
+        group_by(protein, uhgroup) %>%
+        summarise_if(is.logical, any) %>%
+        ungroup()
+    
+    return(list(
+        list(
+            name = 'Only positive',
+            vals = sens_spec(
+                d %>% filter( detected & ionm == 'pos'),
+                d %>% filter(!detected | ionm != 'pos')
+            )
+        ),
+        list(
+            name = 'Only negative',
+            vals = sens_spec(
+                d %>% filter( detected & ionm == 'neg'),
+                d %>% filter(!detected | ionm != 'neg')
+            )
+        ),
+        list(
+            name = 'Only 25% highest intensity',
+            vals = sens_spec(
+                d %>% filter( detected &  i75),
+                d %>% filter(!detected | !i75)
+            )
+        ),
+        list(
+            name = 'Only 10% highest intensity',
+            vals = sens_spec(
+                d %>% filter( detected &  i90),
+                d %>% filter(!detected | !i90)
+            )
+        ),
+        list(
+            name = 'Only 50% highest intensity',
+            vals = sens_spec(
+                d %>% filter( detected &  i50),
+                d %>% filter(!detected | !i50)
+            )
+        ),
+        list(
+            name = 'Only 75% highest intensity',
+            vals = sens_spec(
+                d %>% filter( detected &  i25),
+                d %>% filter(!detected | !i25)
+            )
+        ),
+        list(
+            name = 'Only class I',
+            vals = sens_spec(
+                d %>% filter( detected & cls == 'I'),
+                d %>% filter(!detected | cls != 'I')
+            )
+        ),
+        list(
+            name = 'Only class II',
+            vals = sens_spec(
+                d %>% filter( detected & cls == 'II'),
+                d %>% filter(!detected | cls != 'II')
+            )
+        ),
+        list(
+            name = 'In vivo, class II',
+            vals = sens_spec(
+                d %>% filter(  detected & cls == 'II' & screen == 'A'),
+                d %>% filter(!(detected & cls == 'II' & screen == 'A'))
+            )
+        ),
+        list(
+            name = 'In vitro, class II',
+            vals = sens_spec(
+                d %>% filter( detected & cls == 'II' & screen == 'E'),
+                d %>% filter(!detected | cls != 'II' | screen != 'E')
+            )
+        ),
+        list(
+            name = 'In vivo, class I',
+            vals = sens_spec(
+                d %>% filter( detected & cls == 'I' & screen == 'A'),
+                d %>% filter(!detected | cls != 'I' | screen != 'A')
+            )
+        ),
+        list(
+            name = 'In vitro, class I',
+            vals = sens_spec(
+                d %>% filter( detected &  cls == 'I' & screen == 'E'),
+                d %>% filter(!detected |  cls != 'I' | screen != 'E')
+            )
+        ),
+        list(
+            name = 'In vitro, class I & II',
+            vals = sens_spec(
+                d %>% filter( detected & screen == 'E'),
+                d %>% filter(!detected | screen != 'E')
+            )
+        ),
+        list(
+            name = 'In vivo, class I & II',
+            vals = sens_spec(
+                d %>% filter( detected & screen == 'A'),
+                d %>% filter(!detected | screen != 'A')
+            )
+        ),
+        list(
+            name = 'Class I and in vivo class II',
+            vals = sens_spec(
+                d %>% filter( cls == 'I' | (screen == 'A' & cls =='II')),
+                d %>% filter(!detected | (cls == 'II' & screen != 'A'))
+            )
+        ),
+        list(
+            name = 'Positive in vitro class I and in vivo class II',
+            vals = sens_spec(
+                d %>% filter(
+                    detected &
+                    ionm == 'pos' & (
+                        (screen == 'E' & cls == 'I')  |
+                        (screen == 'A' & cls =='II')
+                    )
+                ),
+                d %>% filter(
+                    !detected |
+                    ionm == 'neg' | (
+                        (screen == 'E' & cls == 'II') |
+                        (screen == 'A' & cls =='I' )
+                    )
+                )
+            )
+        ),
+        list(
+            name = 'Class I & in vivo class II confirmed by in vitro',
+            vals = sens_spec(
+                d %>% filter( detected & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
+                d %>% filter(!detected | (cls == 'II' & (screen != 'A' | (!in_ei & !in_eii))))
+            )
+        ),
+        list(
+            name = 'Class I & class II confirmed by other screen',
+            vals = sens_spec(
+                d %>% filter(
+                    detected & (
+                        cls == 'I'  |
+                        (screen == 'A' & (in_ei | in_eii)) |
+                        (screen == 'E' & (in_ai | in_aii))
+                    )
+                ),
+                d %>% filter(
+                    !detected | (
+                        cls != 'I'  & (
+                            (screen == 'A' & (!in_ei & !in_eii)) |
+                            (screen == 'E' & (!in_ai & !in_aii))
+                        )
+                    )
+                )
+            )
+        )
+    ))
+    
+}
+
 roc_conditions <- function(){
     
-    in_screen <- function(d, sc, cl){
-        
-        return(
-            d %>%
-            filter(cls == cl & screen == sc) %>%
-            select(protein, screen, uhgroup) %>%
-            group_by(protein, screen, uhgroup) %>%
-            summarise_all(first) %>%
-            ungroup() %>%
-            mutate(inn = TRUE)
-        )
-        
-    }
-    
-    by_cols <- c('protein', 'screen', 'uhgroup')
+    by_cols <- c('protein', 'uhgroup')
     
     d <- preprocess_minimal() %>%
         filter(cls %in% c('I', 'II')) %>%
@@ -387,9 +571,17 @@ roc_conditions <- function(){
     
 }
 
-roc_df <- function(){
+roc_df <- function(by_hg = FALSE){
     
-    roc <- roc_conditions()
+    if(by_hg){
+        
+        roc <- roc_conditions_by_hg()
+        
+    }else{
+        
+        roc <- roc_conditions()
+        
+    }
     
     rocdf <- do.call(rbind, lapply(roc, function(r){data.frame(c(list(name = r$name), r$vals))}))
     
@@ -397,27 +589,28 @@ roc_df <- function(){
     
 }
 
-roc_plot <- function(){
+roc_plot <- function(by_hg = FALSE, lim = 1.0){
     
-    rocdf <- roc_df()
+    rocdf <- roc_df(by_hg = by_hg)
+    pdfname <- ifelse(by_hg, 'roc_classes_by-hg.pdf', 'roc_classes.pdf')
     
     #rocdf <- rocdf[1:6,]
     #rocdf <- rocdf %>% filter(sens > 0.0)
     
-    p <- ggplot(rocdf, aes(x = sens, y = 1 - spec, label = name)) +
+    p <- ggplot(rocdf, aes(y = sens, x = 1 - spec, label = name)) +
         geom_abline(intercept = 0, slope = 1, color = 'red') +
         geom_point() +
         geom_text_repel(family = 'DINPro') +
         ggtitle('Various conditions in ROC space') +
         xlab('1 - specificity') +
         ylab('Sensitivity') +
-        xlim(0.0, 1.0) +
-        ylim(0.0, 1.0) +
+        xlim(0.0, lim) +
+        ylim(0.0, lim) +
         theme_bw() +
         theme(
             text = element_text(family = 'DINPro')
         )
     
-    ggsave('roc_classes.pdf', device = cairo_pdf, width = 6, height = 6)
+    ggsave(pdfname, device = cairo_pdf, width = 6, height = 6)
     
 }
