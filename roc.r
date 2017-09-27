@@ -225,6 +225,13 @@ roc_conditions_by_hg <- function(){
     
     return(list(
         list(
+            name = 'Class I & II (all)',
+            vals = sens_spec(
+                d %>% filter( detected),
+                d %>% filter(!detected)
+                )
+        ),
+        list(
             name = 'Only positive',
             vals = sens_spec(
                 d %>% filter( detected & ionm == 'pos'),
@@ -351,8 +358,15 @@ roc_conditions_by_hg <- function(){
         list(
             name = 'Class I & in vivo class II confirmed by in vitro',
             vals = sens_spec(
-                d %>% filter( detected & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
+                d %>% filter(detected & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
                 d %>% filter(!detected | (cls == 'II' & (screen != 'A' | (!in_ei & !in_eii))))
+            )
+        ),
+        list(
+            name = '50% highest intensity: class I & in vivo class II confirmed by in vitro',
+            vals = sens_spec(
+                d %>% filter( detected &  i50 & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
+                d %>% filter(!detected | !i50 | (cls == 'II' & (screen != 'A' | (!in_ei & !in_eii))))
             )
         ),
         list(
@@ -367,6 +381,28 @@ roc_conditions_by_hg <- function(){
                 ),
                 d %>% filter(
                     !detected | (
+                        cls != 'I'  & (
+                            (screen == 'A' & (!in_ei & !in_eii)) |
+                            (screen == 'E' & (!in_ai & !in_aii))
+                        )
+                    )
+                )
+            )
+        ),
+        list(
+            name = '50% highest intensity: class I & class II confirmed by other screen',
+            vals = sens_spec(
+                d %>% filter(
+                    detected &
+                    i50 & (
+                        cls == 'I'  |
+                        (screen == 'A' & (in_ei | in_eii)) |
+                        (screen == 'E' & (in_ai | in_aii))
+                    )
+                ),
+                d %>% filter(
+                    !detected |
+                    !i50 | (
                         cls != 'I'  & (
                             (screen == 'A' & (!in_ei & !in_eii)) |
                             (screen == 'E' & (!in_ai & !in_aii))
@@ -589,7 +625,8 @@ roc_df <- function(by_hg = FALSE){
     
 }
 
-roc_plot <- function(by_hg = FALSE, lim = 1.0){
+roc_plot <- function(by_hg = FALSE, lim = 1.0,
+                     title = 'ROC over all identified features'){
     
     rocdf <- roc_df(by_hg = by_hg)
     pdfname <- ifelse(by_hg, 'roc_classes_by-hg.pdf', 'roc_classes.pdf')
@@ -599,18 +636,32 @@ roc_plot <- function(by_hg = FALSE, lim = 1.0){
     
     p <- ggplot(rocdf, aes(y = sens, x = 1 - spec, label = name)) +
         geom_abline(intercept = 0, slope = 1, color = 'red') +
-        geom_point() +
-        geom_text_repel(family = 'DINPro') +
-        ggtitle('Various conditions in ROC space') +
+        geom_point(shape = 1) +
+        geom_label_repel(
+            family = 'DINPro',
+            size = 3,
+            max.iter = 40000,
+            fill = 'black',
+            color = 'white',
+            segment.color = 'grey30',
+            segment.size = 0.2,
+            box.padding = unit(0.35, "lines"),
+            point.padding = unit(0.35, "lines")
+        ) +
+        ggtitle(title) +
         xlab('1 - specificity') +
         ylab('Sensitivity') +
         xlim(0.0, lim) +
         ylim(0.0, lim) +
         theme_bw() +
         theme(
-            text = element_text(family = 'DINPro')
+            text = element_text(family = 'DINPro'),
+            axis.text = element_text(size = 14),
+            axis.title = element_text(size = 21),
+            plot.title = element_text(size = 24)
         )
     
     ggsave(pdfname, device = cairo_pdf, width = 6, height = 6)
     
 }
+
