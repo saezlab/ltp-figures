@@ -8,6 +8,8 @@ require(dplyr)
 require(lazyeval)
 require(stringr)
 require(ggrepel)
+require(purrr)
+require(readr)
 
 #
 # constants
@@ -90,16 +92,36 @@ all_ligands <- function(d, litlig){
     
 }
 
-by_hg_df <- function(){
+by_hg_df <- function(full_space = FALSE){
     
     d      <- roc_preprocess_by_hg()
+    
+    if(full_space){
+        d <- d %>%
+            mutate(
+                uhgroup_original = uhgroup,
+                uhgroup = gsub('-O$', '', gsub('^Lyso', '', as.character(uhgroup)))
+            ) %>%
+            filter(!is.na(uhgroup))
+    }
+    
     litlig <- read_literature_ligands()
     alllig <- all_ligands(d, litlig)
     litlig <- litlig[sapply(litlig, function(x){as.logical(length(intersect(x, alllig$all)))})]
     allpro <- names(litlig)
-    spacen <- expand.grid(protein = allpro, uhgroup = alllig$neg, ionm = c('neg'), screen = c('A', 'E'))
-    spacep <- expand.grid(protein = allpro, uhgroup = alllig$pos, ionm = c('pos'), screen = c('A', 'E'))
-    space  <- rbind(spacen, spacep)
+    if(full_space){
+        space <- expand.grid(
+            protein = unique(d$protein),
+            uhgroup = union(unique(d$uhgroup),
+                            unique(reduce(litlig, c))),
+            ionm = c('neg', 'pos'),
+            screen = c('A', 'E')
+        )
+    }else{
+        spacen <- expand.grid(protein = allpro, uhgroup = alllig$neg, ionm = c('neg'), screen = c('A', 'E'))
+        spacep <- expand.grid(protein = allpro, uhgroup = alllig$pos, ionm = c('pos'), screen = c('A', 'E'))
+        space  <- rbind(spacen, spacep)
+    }
     bycols <- c('protein', 'ionm', 'uhgroup', 'screen')
     alllit <- unnest(
         data.frame(
@@ -197,11 +219,11 @@ in_screen <- function(d, condition){
     
 }
 
-roc_conditions_by_hg_grouped <- function(){
+roc_conditions_by_hg_grouped <- function(full_space = FALSE){
     
     by_cols <- c('protein', 'uhgroup')
     
-    d <- by_hg_df()
+    d <- by_hg_df(full_space = full_space)
     
     inAI  <- in_screen(d, screen == 'A' & cls == 'I' ) %>% rename(in_ai  = inn)
     inAII <- in_screen(d, screen == 'A' & cls == 'II') %>% rename(in_aii = inn)
@@ -418,11 +440,11 @@ roc_conditions_by_hg_grouped <- function(){
     
 }
 
-roc_conditions_by_hg <- function(group_sets = FALSE){
+roc_conditions_by_hg <- function(group_sets = FALSE, full_space = FALSE){
     
     by_cols <- c('protein', 'uhgroup')
     
-    d <- by_hg_df()
+    d <- by_hg_df(full_space = full_space)
     
     inAI  <- in_screen(d, screen == 'A' & cls == 'I' ) %>% rename(in_ai  = inn)
     inAII <- in_screen(d, screen == 'A' & cls == 'II') %>% rename(in_aii = inn)
@@ -864,15 +886,15 @@ roc_conditions <- function(){
     
 }
 
-roc_df <- function(by_hg = FALSE, group_sets = FALSE){
+roc_df <- function(by_hg = FALSE, group_sets = FALSE, full_space = FALSE){
     
     if(group_sets){
         
-        roc <- roc_conditions_by_hg_grouped()
+        roc <- roc_conditions_by_hg_grouped(full_space = full_space)
         
     }else if(by_hg){
         
-        roc <- roc_conditions_by_hg()
+        roc <- roc_conditions_by_hg(full_space = full_space)
         
     }else{
         
@@ -888,11 +910,21 @@ roc_df <- function(by_hg = FALSE, group_sets = FALSE){
 
 roc_plot <- function(by_hg = FALSE,
                      group_sets = FALSE,
+                     full_space = FALSE,
                      lim = 1.0,
                      title = 'ROC over all identified features'){
     
-    rocdf <- roc_df(by_hg = by_hg, group_sets = group_sets)
-    pdfname <- ifelse(by_hg, 'roc_classes_by-hg.pdf', 'roc_classes.pdf')
+    rocdf <- roc_df(
+        by_hg = by_hg,
+        group_sets = group_sets,
+        full_space = full_space
+    )
+    fname <- ifelse(by_hg,
+        ifelse(full_space,
+            'roc_classes_full',
+            'roc_classes_by-hg'),
+        'roc_classes'
+    )
     
     #rocdf <- rocdf[1:6,]
     #rocdf <- rocdf %>% filter(sens > 0.0)
@@ -916,7 +948,7 @@ roc_plot <- function(by_hg = FALSE,
         ylab('Sensitivity') +
         xlim(0.0, lim) +
         ylim(0.0, lim) +
-        theme_bw() +
+        theme_linedraw() +
         theme(
             text = element_text(family = 'DINPro'),
             axis.text = element_text(size = 14),
@@ -924,7 +956,8 @@ roc_plot <- function(by_hg = FALSE,
             plot.title = element_text(size = 24)
         )
     
-    ggsave(pdfname, device = cairo_pdf, width = 6, height = 6)
+    ggsave(sprintf('%s.pdf', fname), device = cairo_pdf, width = 6, height = 6)
+    rocdf %>% write_tsv(sprintf('%s.tsv', fname))
     
 }
 
