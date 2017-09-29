@@ -47,7 +47,7 @@ get_domain_colors <- function(df){
     
 }
 
-preprocess <- function(infile, by_hg = TRUE){
+lyso_preprocess <- function(infile, by_hg = TRUE){
     
     data <- read.csv(infile, header = TRUE, sep = '\t')
 
@@ -116,7 +116,7 @@ preprocess <- function(infile, by_hg = TRUE){
 
 }
 
-preprocess2 <- function(by_hg = TRUE, only_class1 = TRUE){
+lyso_preprocess2 <- function(by_hg = TRUE, only_class1 = TRUE){
     
     a  <- read.table(infile_a, sep = '\t', header = TRUE)
     e  <- read.table(infile_e, sep = '\t', header = TRUE)
@@ -437,10 +437,10 @@ pref_point <- function(data, y, labsize = 2, labangle = 45){
     
 }
 
-# data_1     <- preprocess(infile_c1,  by_hg = FALSE)
-# data_12    <- preprocess(infile_c12, by_hg = FALSE)
-# data_1_hg  <- preprocess(infile_c1,  by_hg = TRUE)
-# data_12_hg <- preprocess(infile_c12, by_hg = TRUE)
+# data_1     <- lyso_preprocess(infile_c1,  by_hg = FALSE)
+# data_12    <- lyso_preprocess(infile_c12, by_hg = FALSE)
+# data_1_hg  <- lyso_preprocess(infile_c1,  by_hg = TRUE)
+# data_12_hg <- lyso_preprocess(infile_c12, by_hg = TRUE)
 # 
 # intensity_bubble(data_1,  'gg_combined_cargo_classI_lyso_ether_1.pdf',
 #         'Lyso and ether species: only class I', by_hg = FALSE)
@@ -451,10 +451,10 @@ pref_point <- function(data, y, labsize = 2, labangle = 45){
 # intensity_bubble(data_12_hg, 'gg_combined_cargo_lyso_ether.pdf',
 #         'Lyso and ether species: with class II from in vivo', by_hg = TRUE)
 
-data_1     <- preprocess2(by_hg = FALSE)
-data_12    <- preprocess2(by_hg = FALSE, only_class1 = FALSE)
-data_1_hg  <- preprocess2(by_hg = TRUE)
-data_12_hg <- preprocess2(by_hg = TRUE, only_class1 = FALSE)
+data_1     <- lyso_preprocess2(by_hg = FALSE)
+data_12    <- lyso_preprocess2(by_hg = FALSE, only_class1 = FALSE)
+data_1_hg  <- lyso_preprocess2(by_hg = TRUE)
+data_12_hg <- lyso_preprocess2(by_hg = TRUE, only_class1 = FALSE)
 
 intensity_bubble(data_1,
         'gg_combined_cargo_classI_lyso_ether_int_1.pdf',
