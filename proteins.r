@@ -66,12 +66,19 @@ proteins_preprocess <- function(){
                 protein,
                 levels = unique(protein)
             ),
-            domain = recode(domain, lipocalin = 'Lipocalin', scp2 = 'Scp2')
+            domain = recode(
+                domain,
+                lipocalin = 'Lipocalin',
+                scp2 = 'Scp2',
+                IP_trans = 'IP-trans',
+                LBP_BPI_CETP = 'LBP-BPI-CETP'
+            )
         )
         
         for(dom in unique(s$domain)){
             cnt <- dim(s %>% filter(domain == dom))[1]
             s[s$domain == dom,'x'] <- seq(-1 * (cnt - 1) / 2, (cnt - 1) / 2)
+            # s[s$domain == dom,'x'] <- seq(1:cnt)
         }
     
     return(s)
@@ -89,7 +96,7 @@ proteins_plot <- function(){
         # geom_dotplot(binwidth = 1, dotsize = .2, method = 'histodot', binaxis = 'y', stackdir = 'centerwhole') +
         geom_point(position = position_dodge(width = .9), size = 2.7) +
         geom_text(
-            angle = 45,
+            angle = 35,
             color = 'black',
             size = 1.66,
             hjust = 'center',
@@ -130,7 +137,7 @@ proteins_plot <- function(){
             #panel.spacing = unit(2.0, 'lines')
         )
     
-    cairo_pdf(sprintf('%s.pdf', fname), width = 7, height = 3)
+    cairo_pdf(sprintf('%s.pdf', fname), width = 7, height = 2.5)
         
         gt = ggplot_gtable(ggplot_build(p))
         gt$layout$clip = "off"
