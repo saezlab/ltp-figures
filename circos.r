@@ -111,7 +111,7 @@ karyotype_file <- function(){
     
     p <- d$p %>%
         add_column(
-            'cr' = 'cr',
+            'cr' = 'chr',
             'pr' = '-',
             protein2 = d$p$protein,
             .after = 1
@@ -133,7 +133,7 @@ karyotype_file <- function(){
     
     l <- l %>%
         add_column(
-            'cr'  = 'cr',
+            'cr'  = 'chr',
             'pr' = '-',
             'protein'  = '',
             'protein2' = '',
@@ -158,6 +158,52 @@ karyotype_file <- function(){
         all_chr %>%
         write_delim('circos1/karyotype.txt', col_names = FALSE)
     )
+    
+    # karyotype ready
+    
+    # generating links
+    
+    li <- d$c %>%
+        group_by(protein, hgcc0) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        left_join(
+            p %>% select(protein, from, to),
+            by = c('protein'),
+            suffix = c('', '_pro')
+        ) %>%
+        left_join(
+            l %>% select(protein, from, to),
+            by = c('grp' = 'protein'),
+            suffix = c('', '_grp')
+        ) %>%
+        arrange(grp, uhgroup, hgcc0) %>%
+        mutate(
+            grp = factor(grp, levels = grp_ordr, ordered = TRUE),
+            uhgroup = factor(uhgroup, levels = unique(uhgroup), ordered = TRUE),
+            hgcc0 = factor(hgcc0, levels = unique(hgcc0), ordered = TRUE)
+        ) %>%
+        group_by(protein) %>%
+        mutate(pro_offset = from +  1:n()) %>%
+        ungroup() %>%
+        group_by(grp) %>%
+        mutate(grp_offset = from_grp + 1:n()) %>%
+        ungroup() %>%
+        mutate(
+            pro_offset2 = pro_offset - 1,
+            grp_offset2 = grp_offset - 1
+        ) %>%
+        mutate(
+            pro_offset = format(pro_offset, scientific = FALSE, justify = 'none', trim = TRUE),
+            grp_offset = format(grp_offset, scientific = FALSE, justify = 'none', trim = TRUE),
+            pro_offset2 = format(pro_offset2, scientific = FALSE, justify = 'none', trim = TRUE),
+            grp_offset2 = format(grp_offset2, scientific = FALSE, justify = 'none', trim = TRUE)
+        ) %>%
+        select(protein, pro_offset2, pro_offset, grp, grp_offset2, grp_offset)
+    
+    suppressMessages(li %>% write_delim('circos1/links.txt', col_names = FALSE))
+    
+    # returning data frames
     
     invisible(return(all_chr))
     
