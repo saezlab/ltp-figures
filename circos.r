@@ -97,6 +97,8 @@ karyotype_df <- function(){
 
 karyotype_file <- function(){
     
+    result <- list()
+    
     d <- karyotype_df()
     
     ptotal <- sum(d$p$cnt_pro)
@@ -163,10 +165,10 @@ karyotype_file <- function(){
     
     # generating links
     
-    li <- d$c %>%
-        group_by(protein, hgcc0) %>%
-        summarise_all(first) %>%
-        ungroup() %>%
+    coo <- d$c %>%
+        #group_by(protein, hgcc0) %>%
+        #summarise_all(first) %>%
+        #ungroup() %>%
         left_join(
             p %>% select(protein, from, to),
             by = c('protein'),
@@ -198,13 +200,27 @@ karyotype_file <- function(){
             grp_offset = format(grp_offset, scientific = FALSE, justify = 'none', trim = TRUE),
             pro_offset2 = format(pro_offset2, scientific = FALSE, justify = 'none', trim = TRUE),
             grp_offset2 = format(grp_offset2, scientific = FALSE, justify = 'none', trim = TRUE)
-        ) %>%
+        )
+    
+    li <- coo %>%
         select(protein, pro_offset2, pro_offset, grp, grp_offset2, grp_offset)
     
-    suppressMessages(li %>% write_delim('circos1/links.txt', col_names = FALSE))
+    suppressMessages(li %>% write_delim('circos1/links.txt',
+                                        col_names = FALSE))
+    
+    # generating individual labels for lipids
+    
+    la <- coo %>%
+        select(grp, grp_offset2, grp_offset, hgcc)
+    
+    suppressMessages(la %>% write_delim('circos1/labels.txt',
+                                        col_names = FALSE))
     
     # returning data frames
     
-    invisible(return(all_chr))
+    result$chr <- all_chr
+    result$li  <- li
+    
+    invisible(return(result))
     
 }
