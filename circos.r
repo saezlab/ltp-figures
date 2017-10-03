@@ -4,6 +4,7 @@
 # turei.denes@gmail.com
 
 require(tibble)
+require(tidyr)
 source('results.r')
 
 gpl <- c('PE', 'PC', 'PG', 'PA', 'PI', 'PS', 'PG/BMP', 'BMP')
@@ -17,7 +18,11 @@ vit <- c('VE', 'VA', 'VD')
 grp_ordr <- c('GPL', 'GL', 'FA', 'SPH', 'CH', 'VIT')
 scr_ordr <- c('A', 'AE', 'E')
 
-karyotype_df <- function(){
+# apply a multiplier in the lipid section
+# in order to have enough space for labels
+lmul <- 2
+
+circos_preprocess <- function(cluster_proteins = FALSE){
     
     result <- list()
     r <- get_results()
@@ -58,6 +63,12 @@ karyotype_df <- function(){
         mutate(cnt_pro = n()) %>%
         ungroup()
     
+    if(cluster_proteins){
+        
+        protein_ordr <- get_protein_ordr(ae)
+        
+    }
+    
     l <- ae %>%
         select(uhgroup, hg0, grp, hgcc0, screen, cnt_grp, cnt_hg) %>%
         group_by(hg0) %>%
@@ -79,10 +90,42 @@ karyotype_df <- function(){
         group_by(protein) %>%
         mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
         summarise_all(first) %>%
-        ungroup() %>%
-        mutate(screens = factor(screens, levels = scr_ordr, ordered = TRUE)) %>%
-        arrange(screens, protein) %>%
-        mutate(protein = factor(protein, levels = unique(protein), ordered = TRUE))
+        ungroup()
+    
+    if(cluster_proteins){
+        
+        # ordering by proteins
+        p <- p %>%
+            mutate(
+                protein = factor(
+                    protein,
+                    levels = protein_ordr,
+                    ordered = TRUE
+                )
+            ) %>%
+            arrange(protein)
+        
+    }else{
+        
+        # ordering by screens
+        p <- p %>%
+            mutate(
+                screens = factor(
+                    screens,
+                    levels = scr_ordr,
+                    ordered = TRUE
+                )
+            ) %>%
+            arrange(screens, protein) %>%
+            mutate(
+                protein = factor(
+                    protein,
+                    levels = unique(protein),
+                    ordered = TRUE
+                )
+            )
+        
+    }
     
     # full list of connections:
     result$c <- ae
@@ -90,16 +133,22 @@ karyotype_df <- function(){
     result$l <- l
     # all proteins:
     result$p <- p
+    # proteins order:
+    result$pordr <- switch(
+        cluster_proteins,
+        protein_ordr,
+        unique(p$protein)
+    )
     
     return(result)
     
 }
 
-karyotype_file <- function(){
+gen_circos_inputs <- function(cluster_proteins = FALSE){
     
     result <- list()
     
-    d <- karyotype_df()
+    d <- circos_preprocess(cluster_proteins = cluster_proteins)
     
     ptotal <- sum(d$p$cnt_pro)
     ltotal <- sum(
@@ -148,8 +197,8 @@ karyotype_file <- function(){
             rn  = 1:nrow(l)
             ) %>%
         mutate(
-            from = lag(cumsum(cnt_grp), 1) + max(p$to),
-            to   = cumsum(cnt_grp) + max(p$to)
+            from = lag(cumsum(cnt_grp), 1) * lmul + max(p$to),
+            to   = cumsum(cnt_grp) * lmul + max(p$to)
             ) %>%
         mutate(from = ifelse(is.na(from), max(p$to), from)) %>%
         select(cr, pr, protein2, protein, from, to, lb)
@@ -179,9 +228,10 @@ karyotype_file <- function(){
             by = c('grp' = 'protein'),
             suffix = c('', '_grp')
         ) %>%
-        arrange(grp, uhgroup, hgcc0) %>%
+        arrange(grp, hg0, hgcc0) %>%
         mutate(
             grp = factor(grp, levels = grp_ordr, ordered = TRUE),
+            hg0 = factor(hg0, levels = unique(hg0), ordered = TRUE),
             uhgroup = factor(uhgroup, levels = unique(uhgroup), ordered = TRUE),
             hgcc0 = factor(hgcc0, levels = unique(hgcc0), ordered = TRUE)
         ) %>%
@@ -189,11 +239,11 @@ karyotype_file <- function(){
         mutate(pro_offset = from +  1:n()) %>%
         ungroup() %>%
         group_by(grp) %>%
-        mutate(grp_offset = from_grp + 1:n()) %>%
+        mutate(grp_offset = from_grp + 1:n() * lmul) %>%
         ungroup() %>%
         mutate(
             pro_offset2 = pro_offset - 1,
-            grp_offset2 = grp_offset - 1
+            grp_offset2 = grp_offset - lmul
         ) %>%
         mutate(
             pro_offset = format(pro_offset, scientific = FALSE, justify = 'none', trim = TRUE),
@@ -203,7 +253,8 @@ karyotype_file <- function(){
         )
     
     li <- coo %>%
-        select(protein, pro_offset2, pro_offset, grp, grp_offset2, grp_offset)
+        mutate(linkcolor = paste0('color=', tolower(hg0))) %>%
+        select(protein, pro_offset2, pro_offset, grp, grp_offset2, grp_offset, linkcolor)
     
     suppressMessages(li %>% write_delim('circos1/links.txt',
                                         col_names = FALSE))
@@ -211,10 +262,143 @@ karyotype_file <- function(){
     # generating individual labels for lipids
     
     la <- coo %>%
-        select(grp, grp_offset2, grp_offset, hgcc)
+        select(grp, grp_offset2, grp_offset, hgcc0)
     
     suppressMessages(la %>% write_delim('circos1/labels.txt',
                                         col_names = FALSE))
+    
+    # generating subclassing level #1
+    
+    sc1 <- coo %>%
+        group_by(hg0) %>%
+        mutate(
+            sc11 = format(
+                min(as.integer(grp_offset2)),
+                scientific = FALSE, justify = 'none', trim = TRUE),
+            sc12 = format(
+                max(as.integer(grp_offset)),
+                scientific = FALSE, justify = 'none', trim = TRUE)
+        ) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        mutate(sc1color = paste0('color=', tolower(hg0)))
+    
+    sc1tiles  <- sc1 %>% select(grp, sc11, sc12, sc1color)
+    sc1labels <- sc1 %>% select(grp, sc11, sc12, hg0)
+    
+    suppressMessages(sc1tiles  %>% write_delim('circos1/subclass1.txt',
+                                               col_names = FALSE))
+    suppressMessages(sc1labels %>% write_delim('circos1/subclass1lab.txt',
+                                               col_names = FALSE))
+    
+    # generating subclassing level #2
+    
+    sc2 <- coo %>%
+        group_by(uhgroup) %>%
+        mutate(
+            sc21 = format(
+                min(as.integer(grp_offset2)),
+                scientific = FALSE, justify = 'none', trim = TRUE),
+            sc22 = format(
+                max(as.integer(grp_offset)),
+                scientific = FALSE, justify = 'none', trim = TRUE)
+        ) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        mutate(sc2color = paste0('color=', tolower(uhgroup)))
+    
+    sc2p <- coo %>%
+        group_by(protein, uhgroup) %>%
+        mutate(
+            sc21 = format(
+                min(as.integer(pro_offset2)),
+                scientific = FALSE, justify = 'none', trim = TRUE),
+            sc22 = format(
+                max(as.integer(pro_offset)),
+                scientific = FALSE, justify = 'none', trim = TRUE)
+        ) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        mutate(sc2color = paste0('color=', tolower(uhgroup)))
+    
+    sc2tiles  <- bind_rows(
+        sc2 %>% select(grp, sc21, sc22, sc2color),
+        sc2p %>% select(grp = protein, sc21, sc22, sc2color)
+    )
+    sc2labels <- sc2 %>% select(grp, sc21, sc22, uhgroup)
+    
+    suppressMessages(sc2tiles  %>% write_delim('circos1/subclass2.txt',
+                                                col_names = FALSE))
+    suppressMessages(sc2labels %>% write_delim('circos1/subclass2lab.txt',
+                                                col_names = FALSE))
+    
+    # generating intensity plots
+    
+    ity <- coo %>%
+        left_join(
+            coo %>%
+            filter(ionm == 'neg') %>%
+            group_by(protein, screen, hgcc0) %>%
+            mutate(nlirel = max(lirel)) %>%
+            summarise_all(first) %>%
+            select(protein, screen, hgcc0, nlirel) %>%
+            mutate(ionm = 'pos'),
+            by = c('ionm', 'protein', 'screen', 'hgcc0')
+        ) %>%
+        mutate(
+            nlirel = ifelse(
+                ionm == 'neg',
+                lirel,
+                ifelse(is.na(nlirel), 0.0, nlirel)
+            )
+        ) %>%
+        left_join(
+            coo %>%
+            filter(ionm == 'pos') %>%
+            group_by(protein, screen, hgcc0) %>%
+            mutate(plirel = max(lirel)) %>%
+            summarise_all(first) %>%
+            select(protein, screen, hgcc0, plirel) %>%
+            mutate(ionm = 'neg'),
+            by = c('ionm', 'protein', 'screen', 'hgcc0')
+        ) %>%
+        mutate(
+            plirel = ifelse(
+                ionm == 'pos',
+                lirel,
+                ifelse(is.na(plirel), 0.0, plirel)
+            )
+        ) %>%
+        mutate(
+            nlirel = format(-1 * nlirel, scientific = FALSE, justify = 'none', trim = TRUE),
+            plirel = format(plirel, scientific = FALSE, justify = 'none', trim = TRUE)
+        )
+    
+    nity <- bind_rows(
+        ity %>%
+        select(
+            protein = grp,
+            pro_offset2 = grp_offset2,
+            pro_offset = grp_offset,
+            nlirel
+        ),
+        ity %>% select(protein, pro_offset2, pro_offset, nlirel)
+    )
+    pity <-bind_rows(
+        ity %>%
+        select(
+            protein = grp,
+            pro_offset2 = grp_offset2,
+            pro_offset = grp_offset,
+            plirel
+        ),
+        ity %>% select(protein, pro_offset2, pro_offset, plirel)
+    )
+    
+    suppressMessages(pity %>% write_delim('circos1/int-histo-pos.txt',
+                                          col_names = FALSE))
+    suppressMessages(nity %>% write_delim('circos1/int-histo-neg.txt',
+                                          col_names = FALSE))
     
     # returning data frames
     
@@ -222,5 +406,25 @@ karyotype_file <- function(){
     result$li  <- li
     
     invisible(return(result))
+    
+}
+
+get_protein_ordr <- function(ae){
+    
+    adj <- ae %>%
+        group_by(protein, uhgroup) %>%
+        mutate(mlirel = max(lirel)) %>%
+        summarise_all(first) %>%
+        select(protein, uhgroup, mlirel) %>%
+        spread(uhgroup, mlirel) %>%
+        remove_rownames() %>%
+        as.data.frame() %>%
+        column_to_rownames('protein')
+    
+    adj[is.na(adj)] <- 0.0
+    d <- dist(adj)
+    cl <- hclust(d, method = 'ward.D2')
+    
+    return(cl$labels[cl$order])
     
 }
