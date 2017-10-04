@@ -35,10 +35,12 @@ get_results <- function(){
     epairs <- get_pairs(e)
     
     a <- a %>%
+        mutate(lit = lit == 'True') %>%
         left_join(epairs, by = c('protein', 'uhgroup')) %>%
         filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
     
     e <- e %>%
+        mutate(lit = lit == 'True') %>%
         left_join(apairs, by = c('protein', 'uhgroup')) %>%
         filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
     
