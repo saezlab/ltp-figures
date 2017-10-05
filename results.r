@@ -6,6 +6,8 @@
 require(readr)
 require(dplyr)
 
+source('clustering.r')
+
 infile_a   <- 'antonella_final.csv'
 infile_e   <- 'enric_processed.csv'
 infile_t   <- 'ltp_hptlc.tsv'
@@ -48,6 +50,129 @@ get_results <- function(){
     result$a <- a
     result$e <- e
     result$t <- t
+    
+    return(result)
+    
+}
+
+
+preprocess0 <- function(cluster_proteins = FALSE){
+    
+    result <- list()
+    r <- get_results()
+    
+    # preprocessing
+    ae <- bind_rows(r$a, r$e) %>%
+        group_by(protein, uhgroup) %>%
+        mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
+        ungroup() %>%
+        group_by(protein) %>%
+        group_by(protein, ionm, screen, uhgroup, cls) %>%
+        mutate(ihg = sum(as.numeric(intensity))) %>%
+        ungroup() %>%
+        group_by(protein, ionm, screen) %>%
+        mutate(itotal = sum(as.numeric(ihg))) %>%
+        ungroup() %>%
+        group_by(protein, ionm, screen, uhgroup, cls) %>%
+        mutate(irel = ihg / itotal) %>%
+        mutate(lirel = log10(1 + irel)) %>%
+        ungroup() %>%
+        mutate(hg0 = gsub('-O$', '', gsub('^Lyso', '', as.character(uhgroup)))) %>%
+        mutate(grp = ifelse(
+            hg0 %in% gpl, 'GPL', ifelse(
+            hg0 %in% gl, 'GL', ifelse(
+            hg0 %in% fa, 'FA', ifelse(
+            hg0 %in% ch, 'CH', ifelse(
+            hg0 %in% sph, 'SPH', ifelse(
+            hg0 %in% vit, 'VIT', NA
+        ))))))) %>%
+        mutate(hgcc0 = ifelse(is.na(hgcc), uhgroup, hgcc)) %>%
+        group_by(grp) %>%
+        mutate(cnt_grp = n()) %>%
+        ungroup() %>%
+        group_by(uhgroup) %>%
+        mutate(cnt_hg = n()) %>%
+        ungroup() %>%
+        group_by(protein) %>%
+        mutate(cnt_pro = n()) %>%
+        ungroup()
+    
+    if(cluster_proteins){
+        
+        protein_ordr <- get_protein_ordr(ae)
+        
+    }
+    
+    l <- ae %>%
+        select(uhgroup, hg0, grp, hgcc0, screen, cnt_grp, cnt_hg) %>%
+        group_by(hg0) %>%
+        mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
+        ungroup() %>%
+        group_by(hgcc0) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        mutate(grp = factor(grp, levels = grp_ordr, ordered = TRUE)) %>%
+        arrange(grp, hg0, uhgroup, hgcc0) %>%
+        mutate(
+            hg0 = factor(hg0, levels = unique(hg0), ordered = TRUE),
+            uhgroup = factor(uhgroup, levels = unique(uhgroup), ordered = TRUE),
+            hgcc0 = factor(hgcc0, levels = unique(hgcc0), ordered = TRUE)
+        )
+    
+    p <- ae %>%
+        select(protein, screen, cnt_pro) %>%
+        group_by(protein) %>%
+        mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
+        summarise_all(first) %>%
+        ungroup()
+    
+    if(cluster_proteins){
+        
+        # ordering by proteins
+        p <- p %>%
+            mutate(
+                protein = factor(
+                    protein,
+                    levels = protein_ordr,
+                    ordered = TRUE
+                )
+            ) %>%
+            arrange(protein)
+        
+    }else{
+        
+        # ordering by screens
+        p <- p %>%
+            mutate(
+                screens = factor(
+                    screens,
+                    levels = scr_ordr,
+                    ordered = TRUE
+                )
+            ) %>%
+            arrange(screens, protein) %>%
+            mutate(
+                protein = factor(
+                    protein,
+                    levels = unique(protein),
+                    ordered = TRUE
+                )
+            )
+        
+    }
+    
+    # full list of connections:
+    result$c <- ae
+    # all ligands:
+    result$l <- l
+    # all proteins:
+    result$p <- p
+    # proteins order:
+    result$pordr <- switch(
+        cluster_proteins,
+        protein_ordr,
+        unique(p$protein)
+    )
     
     return(result)
     

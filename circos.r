@@ -3,9 +3,8 @@
 # Dénes Türei EMBL 2017
 # turei.denes@gmail.com
 
-require(tibble)
-require(tidyr)
 source('results.r')
+source('clustering.r')
 
 gpl <- c('PE', 'PC', 'PG', 'PA', 'PI', 'PS', 'PG/BMP', 'BMP')
 gl <- c('DAG', 'TAG', 'MAG')
@@ -22,7 +21,7 @@ scr_ordr <- c('A', 'AE', 'E')
 # in order to have enough space for labels
 lmul <- 2
 
-circos_preprocess <- function(cluster_proteins = FALSE){
+preprocess0 <- function(cluster_proteins = FALSE){
     
     result <- list()
     r <- get_results()
@@ -474,7 +473,7 @@ summary_heatmap <- function(wide = FALSE){
     }
     
     p <- p +
-    geom_tile(aes(fill = screens)) +
+        geom_tile(aes(fill = screens)) +
         geom_point(aes(alpha = lit), color = 'white') +
         scale_alpha_manual(
             guide = guide_legend(title = 'Novelty'),
