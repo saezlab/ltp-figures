@@ -7,7 +7,7 @@ require(dplyr)
 require(tibble)
 require(tidyr)
 
-get_protein_ordr <- function(ae, return_cl = FALSE){
+get_protein_ordr <- function(ae, return_cl = FALSE, method = 'ward.D2'){
     
     adj <- ae %>%
         group_by(protein, uhgroup) %>%
@@ -21,7 +21,7 @@ get_protein_ordr <- function(ae, return_cl = FALSE){
     
     adj[is.na(adj)] <- 0.0
     d <- dist(adj)
-    cl <- hclust(d, method = 'ward.D2')
+    cl <- hclust(d, method = method)
     
     if(return_cl){
         
@@ -56,7 +56,7 @@ do_clustering <- function(d, x, y, v, method = 'ward.D2'){
     adj[is.na(adj)] <- 0.0
     dix <- dist(adj)
     diy <- dist(t(adj))
-    clx <- hclust(dix,    method = method)
+    clx <- hclust(dix, method = method)
     cly <- hclust(diy, method = method)
     
     res$x  <- clx

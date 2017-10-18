@@ -10,6 +10,7 @@ require(stringr)
 require(ggrepel)
 require(purrr)
 require(readr)
+require(tidyr)
 
 #
 # constants
@@ -18,6 +19,7 @@ require(readr)
 infile_a   <- 'antonella_final.csv'
 infile_e   <- 'enric_processed.csv'
 infile_lit_ligands <- 'binding_properties_plain.csv'
+lossfile <- 'fall_out.csv'
 
 #
 # functions
@@ -192,6 +194,40 @@ sens_spec <- function(pos, neg){
         fn   = fn,
         n    = tp + fp + tn + fn
     ))
+    
+}
+
+roc_point <- function(name, pos, neg){
+    
+    result <- list(
+        name = name,
+        vals = sens_spec(pos, neg)
+    )
+    
+    result$pos <- pos
+    result$neg <- neg
+    
+    result$lost <- neg %>%
+        filter(detected) %>%
+        select(protein, uhgroup) %>%
+        left_join(
+            pos %>%
+                filter(detected) %>%
+                mutate(in_pos = TRUE) %>%
+                select(protein, uhgroup, in_pos),
+            by = c('protein', 'uhgroup')
+        ) %>%
+        filter(is.na(in_pos)) %>%
+        select(protein, uhgroup) %>%
+        group_by(protein, uhgroup) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        arrange(protein, uhgroup)
+    
+    write(sprintf('\n### %s', name), lossfile, append = TRUE)
+    write.table(result$lost, lossfile, sep = '\t', quote = FALSE, append = TRUE, col.names = FALSE)
+    
+    return(result)
     
 }
 
@@ -462,7 +498,9 @@ roc_conditions_by_hg_grouped <- function(full_space = FALSE){
     
 }
 
-roc_conditions_by_hg <- function(group_sets = FALSE, full_space = FALSE){
+roc_conditions_by_hg <- function(group_sets = FALSE, full_space = FALSE, verbose = FALSE){
+    
+    write('', file = lossfile)
     
     by_cols <- c('protein', 'uhgroup')
     
@@ -525,189 +563,147 @@ roc_conditions_by_hg <- function(group_sets = FALSE, full_space = FALSE){
     }
     
     return(list(
-        list(
-            name = 'Class I & II (all)',
-            vals = sens_spec(
-                d_any %>% filter( detected),
-                d_any %>% filter(!detected)
+        roc_point(
+            name = 'Class I | II',
+            pos = d_any %>% filter( detected),
+            neg = d_any %>% filter(!detected)
+        ),
+        roc_point(
+            name = 'Positive',
+            pos = d_ionm %>% filter( detected & ionm == 'pos'),
+            neg = d_ionm %>% filter(!detected | ionm != 'pos')
+        ),
+        roc_point(
+            name = 'Negative',
+            pos = d_ionm %>% filter( detected & ionm == 'neg'),
+            neg = d_ionm %>% filter(!detected | ionm != 'neg')
+        ),
+        roc_point(
+            name = '25% highest intensity',
+            pos = d_any %>% filter( detected &  i75),
+            neg = d_any %>% filter(!detected | !i75)
+        ),
+        roc_point(
+            name = '10% highest intensity',
+            pos = d_any %>% filter( detected &  i90),
+            neg = d_any %>% filter(!detected | !i90)
+        ),
+        roc_point(
+            name = '50% highest intensity',
+            pos = d_any %>% filter( detected &  i50),
+            neg = d_any %>% filter(!detected | !i50)
+        ),
+        roc_point(
+            name = '75% highest intensity',
+            pos = d_any %>% filter( detected &  i25),
+            neg = d_any %>% filter(!detected | !i25)
+        ),
+        roc_point(
+            name = 'Class I',
+            pos = d_cls %>% filter( detected & cls == 'I'),
+            neg = d_cls %>% filter(!detected | cls != 'I')
+        ),
+        roc_point(
+            name = 'Class II',
+            pos = d_cls %>% filter( detected & cls == 'II'),
+            neg = d_cls %>% filter(!detected | cls != 'II')
+        ),
+        roc_point(
+            name = 'In vivo & class II',
+            pos = d_scr_cls %>% filter(  detected & cls == 'II' & screen == 'A'),
+            neg = d_scr_cls %>% filter(!(detected & cls == 'II' & screen == 'A'))
+        ),
+        roc_point(
+            name = 'In vitro & class II',
+            pos = d_scr_cls %>% filter( detected & cls == 'II' & screen == 'E'),
+            neg = d %>% filter(!detected | cls != 'II' | screen != 'E')
+        ),
+        roc_point(
+            name = 'In vivo & class I',
+            pos = d_scr_cls %>% filter( detected & cls == 'I' & screen == 'A'),
+            neg = d_scr_cls %>% filter(!detected | cls != 'I' | screen != 'A')
+        ),
+        roc_point(
+            name = 'In vitro & class I',
+            pos = d_scr_cls %>% filter( detected &  cls == 'I' & screen == 'E'),
+            neg = d_scr_cls %>% filter(!detected |  cls != 'I' | screen != 'E')
+        ),
+        roc_point(
+            name = 'In vitro & (class I | II)',
+            pos = d_scr_cls %>% filter( detected & screen == 'E'),
+            neg = d_scr_cls %>% filter(!detected | screen != 'E')
+        ),
+        roc_point(
+            name = 'In vivo & (class I | II)',
+            pos = d_scr_cls %>% filter( detected & screen == 'A'),
+            neg = d_scr_cls %>% filter(!detected | screen != 'A')
+        ),
+        roc_point(
+            name = 'Class I | (in vivo & class II)',
+            pos = d_scr_cls %>% filter( cls == 'I' | (screen == 'A' & cls =='II')),
+            neg = d_scr_cls %>% filter(!detected | (cls == 'II' & screen != 'A'))
+        ),
+        roc_point(
+            name = 'Positive & ((in vitro & class I) | (in vivo & class II))',
+            pos = d %>% filter(
+                detected &
+                ionm == 'pos' & (
+                    (screen == 'E' & cls == 'I')  |
+                    (screen == 'A' & cls =='II')
                 )
-        ),
-        list(
-            name = 'Only positive',
-            vals = sens_spec(
-                d_ionm %>% filter( detected & ionm == 'pos'),
-                d_ionm %>% filter(!detected | ionm != 'pos')
+            ),
+            neg = d %>% filter(
+                !detected |
+                ionm == 'neg' | (
+                    (screen == 'E' & cls == 'II') |
+                    (screen == 'A' & cls =='I' )
+                )
             )
         ),
-        list(
-            name = 'Only negative',
-            vals = sens_spec(
-                d_ionm %>% filter( detected & ionm == 'neg'),
-                d_ionm %>% filter(!detected | ionm != 'neg')
-            )
+        roc_point(
+            name = 'Class I | (in vivo & class II & confirmed by in vitro)',
+            pos = d_scr_cls %>% filter(detected & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
+            neg = d_scr_cls %>% filter(!detected | (cls == 'II' & (screen != 'A' | (!in_ei & !in_eii))))
         ),
-        list(
-            name = 'Only 25% highest intensity',
-            vals = sens_spec(
-                d_any %>% filter( detected &  i75),
-                d_any %>% filter(!detected | !i75)
-            )
+        roc_point(
+            name = '50% highest intensity & (class I | (in vivo & class II & confirmed by in vitro))',
+            pos = d_scr_cls %>% filter( detected &  i50 & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
+            neg = d_scr_cls %>% filter(!detected | !i50 | (cls == 'II' & (screen != 'A' | (!in_ei & !in_eii))))
         ),
-        list(
-            name = 'Only 10% highest intensity',
-            vals = sens_spec(
-                d_any %>% filter( detected &  i90),
-                d_any %>% filter(!detected | !i90)
-            )
-        ),
-        list(
-            name = 'Only 50% highest intensity',
-            vals = sens_spec(
-                d_any %>% filter( detected &  i50),
-                d_any %>% filter(!detected | !i50)
-            )
-        ),
-        list(
-            name = 'Only 75% highest intensity',
-            vals = sens_spec(
-                d_any %>% filter( detected &  i25),
-                d_any %>% filter(!detected | !i25)
-            )
-        ),
-        list(
-            name = 'Only class I',
-            vals = sens_spec(
-                d_cls %>% filter( detected & cls == 'I'),
-                d_cls %>% filter(!detected | cls != 'I')
-            )
-        ),
-        list(
-            name = 'Only class II',
-            vals = sens_spec(
-                d_cls %>% filter( detected & cls == 'II'),
-                d_cls %>% filter(!detected | cls != 'II')
-            )
-        ),
-        list(
-            name = 'In vivo, class II',
-            vals = sens_spec(
-                d_scr_cls %>% filter(  detected & cls == 'II' & screen == 'A'),
-                d_scr_cls %>% filter(!(detected & cls == 'II' & screen == 'A'))
-            )
-        ),
-        list(
-            name = 'In vitro, class II',
-            vals = sens_spec(
-                d_scr_cls %>% filter( detected & cls == 'II' & screen == 'E'),
-                d %>% filter(!detected | cls != 'II' | screen != 'E')
-            )
-        ),
-        list(
-            name = 'In vivo, class I',
-            vals = sens_spec(
-                d_scr_cls %>% filter( detected & cls == 'I' & screen == 'A'),
-                d_scr_cls %>% filter(!detected | cls != 'I' | screen != 'A')
-            )
-        ),
-        list(
-            name = 'In vitro, class I',
-            vals = sens_spec(
-                d_scr_cls %>% filter( detected &  cls == 'I' & screen == 'E'),
-                d_scr_cls %>% filter(!detected |  cls != 'I' | screen != 'E')
-            )
-        ),
-        list(
-            name = 'In vitro, class I & II',
-            vals = sens_spec(
-                d_scr_cls %>% filter( detected & screen == 'E'),
-                d_scr_cls %>% filter(!detected | screen != 'E')
-            )
-        ),
-        list(
-            name = 'In vivo, class I & II',
-            vals = sens_spec(
-                d_scr_cls %>% filter( detected & screen == 'A'),
-                d_scr_cls %>% filter(!detected | screen != 'A')
-            )
-        ),
-        list(
-            name = 'Class I and in vivo class II',
-            vals = sens_spec(
-                d_scr_cls %>% filter( cls == 'I' | (screen == 'A' & cls =='II')),
-                d_scr_cls %>% filter(!detected | (cls == 'II' & screen != 'A'))
-            )
-        ),
-        list(
-            name = 'Positive in vitro class I and in vivo class II',
-            vals = sens_spec(
-                d %>% filter(
-                    detected &
-                    ionm == 'pos' & (
-                        (screen == 'E' & cls == 'I')  |
-                        (screen == 'A' & cls =='II')
-                    )
-                ),
-                d %>% filter(
-                    !detected |
-                    ionm == 'neg' | (
-                        (screen == 'E' & cls == 'II') |
-                        (screen == 'A' & cls =='I' )
+        roc_point(
+            name = 'Class I | (class II & confirmed by other screen)',
+            pos = d_scr_cls %>% filter(
+                detected & (
+                    cls == 'I'  |
+                    (screen == 'A' & (in_ei | in_eii)) |
+                    (screen == 'E' & (in_ai | in_aii))
+                )
+            ),
+            neg = d_scr_cls %>% filter(
+                !detected | (
+                    cls != 'I'  & (
+                        (screen == 'A' & (!in_ei & !in_eii)) |
+                        (screen == 'E' & (!in_ai & !in_aii))
                     )
                 )
             )
         ),
-        list(
-            name = 'Class I & in vivo class II confirmed by in vitro',
-            vals = sens_spec(
-                d_scr_cls %>% filter(detected & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
-                d_scr_cls %>% filter(!detected | (cls == 'II' & (screen != 'A' | (!in_ei & !in_eii))))
-            )
-        ),
-        list(
-            name = '50% highest intensity: class I & in vivo class II confirmed by in vitro',
-            vals = sens_spec(
-                d_scr_cls %>% filter( detected &  i50 & (cls == 'I'  | (screen == 'A' & (in_ei | in_eii)))),
-                d_scr_cls %>% filter(!detected | !i50 | (cls == 'II' & (screen != 'A' | (!in_ei & !in_eii))))
-            )
-        ),
-        list(
-            name = 'Class I & class II confirmed by other screen',
-            vals = sens_spec(
-                d_scr_cls %>% filter(
-                    detected & (
-                        cls == 'I'  |
-                        (screen == 'A' & (in_ei | in_eii)) |
-                        (screen == 'E' & (in_ai | in_aii))
-                    )
-                ),
-                d_scr_cls %>% filter(
-                    !detected | (
-                        cls != 'I'  & (
-                            (screen == 'A' & (!in_ei & !in_eii)) |
-                            (screen == 'E' & (!in_ai & !in_aii))
-                        )
-                    )
+        roc_point(
+            name = '50% highest intensity & (class I | (class II & confirmed by other screen))',
+            pos = d_scr_cls %>% filter(
+                detected &
+                i50 & (
+                    cls == 'I'  |
+                    (screen == 'A' & (in_ei | in_eii)) |
+                    (screen == 'E' & (in_ai | in_aii))
                 )
-            )
-        ),
-        list(
-            name = '50% highest intensity: class I & class II confirmed by other screen',
-            vals = sens_spec(
-                d_scr_cls %>% filter(
-                    detected &
-                    i50 & (
-                        cls == 'I'  |
-                        (screen == 'A' & (in_ei | in_eii)) |
-                        (screen == 'E' & (in_ai | in_aii))
-                    )
-                ),
-                d_scr_cls %>% filter(
-                    !detected |
-                    !i50 | (
-                        cls != 'I'  & (
-                            (screen == 'A' & (!in_ei & !in_eii)) |
-                            (screen == 'E' & (!in_ai & !in_aii))
-                        )
+            ),
+            neg = d_scr_cls %>% filter(
+                !detected |
+                !i50 | (
+                    cls != 'I'  & (
+                        (screen == 'A' & (!in_ei & !in_eii)) |
+                        (screen == 'E' & (!in_ai & !in_aii))
                     )
                 )
             )
@@ -908,21 +904,23 @@ roc_conditions <- function(){
     
 }
 
-roc_df <- function(by_hg = FALSE, group_sets = FALSE, full_space = FALSE){
+roc_df <- function(by_hg = FALSE, group_sets = FALSE, full_space = FALSE, verbose = FALSE){
     
     if(group_sets){
         
-        roc <- roc_conditions_by_hg_grouped(full_space = full_space)
+        roc <- roc_conditions_by_hg_grouped(full_space = full_space, verbose = verbose)
         
     }else if(by_hg){
         
-        roc <- roc_conditions_by_hg(full_space = full_space)
+        roc <- roc_conditions_by_hg(full_space = full_space, verbose = verbose)
         
     }else{
         
-        roc <- roc_conditions()
+        roc <- roc_conditions(verbose = verbose)
         
     }
+    
+    
     
     rocdf <- do.call(rbind, lapply(roc, function(r){data.frame(c(list(name = r$name), r$vals))}))
     
@@ -934,12 +932,14 @@ roc_plot <- function(by_hg = FALSE,
                      group_sets = FALSE,
                      full_space = FALSE,
                      lim = 1.0,
-                     title = 'ROC over all identified features'){
+                     title = 'ROC over all identified features',
+                     verbose = FALSE){
     
     rocdf <- roc_df(
         by_hg = by_hg,
         group_sets = group_sets,
-        full_space = full_space
+        full_space = full_space,
+        verbose = verbose
     )
     fname <- ifelse(by_hg,
         ifelse(full_space,

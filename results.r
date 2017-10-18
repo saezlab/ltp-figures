@@ -56,7 +56,7 @@ get_results <- function(){
 }
 
 
-preprocess0 <- function(cluster_proteins = FALSE){
+preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2'){
     
     result <- list()
     r <- get_results()
@@ -99,7 +99,7 @@ preprocess0 <- function(cluster_proteins = FALSE){
     
     if(cluster_proteins){
         
-        protein_ordr <- get_protein_ordr(ae)
+        protein_ordr <- get_protein_ordr(ae, method = method)
         
     }
     

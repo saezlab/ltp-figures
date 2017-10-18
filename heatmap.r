@@ -26,14 +26,15 @@ get_legend<-function(a.gplot){
     
 }
 
-summary_heatmap <- function(wide = FALSE, dendrogram = FALSE){
+summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D2'){
     
     result <- list()
     
     pdfname <- sprintf(
-        'ms-summary-heatmap%s%s.pdf',
+        'ms-summary-heatmap%s%s%s.pdf',
         ifelse(wide, '-w', ''),
-        ifelse(dendrogram, '-d', '')
+        ifelse(dendrogram, '-d', ''),
+        ifelse(dendrogram, sprintf('-%s', method), '')
     )
     width   <- ifelse(wide, 7.2, 5.7)
     height  <- 9
@@ -42,11 +43,11 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE){
     
     result$fname <- pdfname
     
-    d  <- preprocess0(cluster_proteins = TRUE)
+    d  <- preprocess0(cluster_proteins = TRUE, method = method)
     #cl <- get_protein_ordr(d$c, return_cl = TRUE)
     
     if(wide){
-        cl <- do_clustering(h, protein, uhgroup, lirel)
+        cl <- do_clustering(h, protein, uhgroup, lirel, method = method)
         h <- d$c %>%
             mutate(
                 protein = factor(
@@ -63,7 +64,7 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE){
             group_by(protein, uhgroup)
         
     }else{
-        cl <- do_clustering(h, protein, hg0, lirel)
+        cl <- do_clustering(h, protein, hg0, lirel, method = method)
         h <- d$c %>%
             mutate(
                 protein = factor(
@@ -209,19 +210,21 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE){
         scale_y_continuous(
             expand = c(0, 0),
             limits = c(
-                min(segment(ddatay)$y) - 0.69,
+                min(segment(ddatay)$y) - 1.3,
                 max(segment(ddatay)$y) * 1.2
             )
         ) +
         scale_x_continuous(
             expand = c(0, .5)
         ) +
+        ggtitle(sprintf('Linkage method: %s', method)) +
         theme_minimal() +
         theme(
             text = element_text(family = 'DINPro'),
             axis.title = element_blank(),
             axis.text = element_blank(),
-            panel.grid = element_blank()
+            panel.grid = element_blank(),
+            plot.title = element_text(size = 5)
         )
     
     cairo_pdf(pdfname, width = width, height = height)
@@ -307,5 +310,23 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE){
     result$grobs$top  <- dtp_gt
     
     return(result)
+    
+}
+
+test_linkage_methods <- function(){
+    
+    ws <- c(TRUE, FALSE)
+    ms <- c('ward.D2', 'ward.D', 'single', 'complete', 'average', 'median', 'mcquitty', 'centroid')
+    
+    for(w in ws){
+        
+        for(m in ms){
+            
+            cat(sprintf('\tMethod: %s\n', m))
+            
+            nothing <- summary_heatmap(wide = w, dendrogram = TRUE, method = m)
+            
+        }
+    }
     
 }
