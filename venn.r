@@ -2,24 +2,28 @@
 
 # (c) Denes Turei 2017 EMBL
 
-infile_lit_ligands <- 'binding_properties_plain.csv'
-
 source('results.r')
+source('proteins.r')
 
-screens_lit_df <- function(with_hptlc = FALSE){
+screens_lit_df <- function(with_hptlc = TRUE){
     
-    r <- get_results()
-    l <- suppressMessages(read_tsv(infile_lit_ligands,
-                                   col_names = c('protein', 'uhgroup')))
+    r <- get_results(with_hptlc = with_hptlc)
+    m <- master_table(output = FALSE)$m %>%
+        rename(
+            protein = default_name,
+            uhgroup = mammalian_ligand_categories
+        ) %>%
+        filter(!is.na(uhgroup)) %>%
+        unnest(uhgroup = strsplit(uhgroup, ',')) %>%
+        select(protein, uhgroup)
     
     d <- rbind(r$a, r$e) %>% select(protein, uhgroup, screen)
     
-    if(with_hptlc){
-        
-        t <- r$t %>% mutate(screen = 'T')
-        d <- rbind(d, t)
-        
-    }
+    p <- d %>%
+        select(protein) %>%
+        group_by(protein) %>%
+        summarise_all(first) %>%
+        ungroup()
     
     d <- d %>%
         mutate(
@@ -27,7 +31,7 @@ screens_lit_df <- function(with_hptlc = FALSE){
                            gsub('^Lyso', '',
                                 as.character(uhgroup)))) %>%
         bind_rows(
-            l %>% mutate(screen = 'L')
+            m %>% mutate(screen = 'L')
         ) %>%
         mutate(
             uhgroup = recode(uhgroup,
@@ -52,7 +56,8 @@ screens_lit_df <- function(with_hptlc = FALSE){
         mutate(screen = paste0(unique(sort(screen)), collapse = '')) %>%
         mutate(in_lit = grepl('L', screen, fixed = TRUE)) %>%
         summarise_all(first) %>%
-        ungroup()
+        ungroup() %>%
+        inner_join(p, by = c('protein'))
     
     d %>% write_tsv('screens_venn.tsv')
     return(d)

@@ -10,9 +10,11 @@ source('clustering.r')
 
 infile_a   <- 'antonella_final.csv'
 infile_e   <- 'enric_processed.csv'
-infile_t   <- 'ltp_hptlc.tsv'
+infile_t   <- 'ltp_hptlc_static.tsv'
 
-get_results <- function(){
+get_results <- function(with_hptlc = TRUE){
+    
+    by_t <- c('protein', 'uhgroup', 'screen', 'method')
     
     get_pairs <- function(d){
         
@@ -28,10 +30,24 @@ get_results <- function(){
         
     }
     
-    a <- suppressMessages(read_tsv(infile_a))
-    e <- suppressMessages(read_tsv(infile_e))
-    t <- suppressMessages(read_tsv(infile_t,
-                                   col_names = c('protein', 'uhgroup')))
+    a <- suppressMessages(read_tsv(infile_a)) %>% mutate(method = 'MS')
+    e <- suppressMessages(read_tsv(infile_e)) %>% mutate(method = 'MS')
+    
+    if(with_hptlc){
+        
+        t <- suppressMessages(read_tsv(infile_t,
+                                    col_names = c('protein', 'uhgroup', 'screen')))
+        t <- t %>% mutate(method = 'HPTLC')
+        ta <- t %>% filter(screen == 'A')
+        te <- t %>% filter(screen == 'E')
+        a <- a %>%
+            full_join(ta, by = by_t) %>%
+            mutate(cls = ifelse(method == 'HPTLC', 'I', cls))
+        e <- e %>%
+            full_join(te, by = by_t) %>%
+            mutate(cls = ifelse(method == 'HPTLC', 'I', cls))
+        
+    }
     
     apairs <- get_pairs(a)
     epairs <- get_pairs(e)
@@ -49,7 +65,9 @@ get_results <- function(){
     result <- list()
     result$a <- a
     result$e <- e
-    result$t <- t
+    if(with_hptlc){
+        result$t <- t
+    }
     
     return(result)
     

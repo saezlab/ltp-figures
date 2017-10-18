@@ -36,8 +36,8 @@ proteins_preprocess <- function(){
     scoln <- c('protein', 'ionm', 'stat', 'cnt')
     
     ae <- bind_rows(
-        read_tsv(infile_a),
-        read_tsv(infile_e)
+        suppressMessages(read_tsv(infile_a)),
+        suppressMessages(read_tsv(infile_e))
     ) %>%
     group_by(protein) %>%
     select(protein, domain) %>%
@@ -45,8 +45,12 @@ proteins_preprocess <- function(){
     ungroup()
     
     s <- bind_rows(
-            read_tsv(infile_sa, col_names = scoln) %>% mutate(screen = 'A'),
-            read_tsv(infile_se, col_names = scoln) %>% mutate(screen = 'E')
+            suppressMessages(
+                read_tsv(infile_sa, col_names = scoln) %>% mutate(screen = 'A')
+            ),
+            suppressMessages(
+                read_tsv(infile_se, col_names = scoln) %>% mutate(screen = 'E')
+            )
         ) %>%
         select(protein, screen) %>%
         group_by(protein) %>%
@@ -57,7 +61,9 @@ proteins_preprocess <- function(){
         summarise_all(first) %>%
         ungroup() %>%
         left_join(
-            read_tsv(infile_d, col_names = c('protein', 'domain')),
+            suppressMessages(
+                read_tsv(infile_d, col_names = c('protein', 'domain'))
+            ),
             by = c('protein')
         ) %>%
         arrange(screen) %>%
@@ -155,7 +161,7 @@ proteins_plot <- function(){
     
 }
 
-master_table <- function(){
+master_table <- function(output = TRUE){
     
     hdr <- c(
         'Default name',
@@ -178,7 +184,7 @@ master_table <- function(){
         mutate(in_invivo = screen %in% c('A', 'AE'),
                in_invitro = screen %in% c('E', 'AE')) %>%
         select(protein, in_invitro, in_invivo)
-    m1 <- read_tsv(infile_master1)
+    m1 <- suppressMessages(read_tsv(infile_master1))
     
     ra <- r$a %>%
         group_by(protein) %>%
@@ -206,11 +212,15 @@ master_table <- function(){
         arrange(desc(invivo_count), desc(invitro_count), desc(in_invitro), desc(in_invivo)) %>%
         select(default_name:non_mammalian_ligands, in_invivo, in_invitro, invivo_count:invitro_binders)
     
-    write_tsv(as.data.frame(t(hdr)), 'master_part2.tsv', col_names = FALSE)
-    write_tsv(m %>% filter(in_invivo | in_invitro), 'master_part2.tsv', append = TRUE)
-    write('\nNon tested LTPs:', file = 'master_part2.tsv', append = TRUE)
-    write_tsv(as.data.frame(t(hdr)), 'master_part2.tsv', append = TRUE)
-    write_tsv(m %>% filter(!in_invivo & !in_invitro), 'master_part2.tsv', append = TRUE)
+    if(output){
+        
+        write_tsv(as.data.frame(t(hdr)), 'master_part2.tsv', col_names = FALSE)
+        write_tsv(m %>% filter(in_invivo | in_invitro), 'master_part2.tsv', append = TRUE)
+        write('\nNon tested LTPs:', file = 'master_part2.tsv', append = TRUE)
+        write_tsv(as.data.frame(t(hdr)), 'master_part2.tsv', append = TRUE)
+        write_tsv(m %>% filter(!in_invivo & !in_invitro), 'master_part2.tsv', append = TRUE)
+        
+    }
     
     result <- list()
     result$a  <- r$a
