@@ -196,20 +196,20 @@ roc_point <- function(name, pos, neg){
     
     result$lost <- neg %>%
         filter(detected) %>%
-        select(protein, uhgroup) %>%
+        select(protein, hg0) %>%
         left_join(
             pos %>%
                 filter(detected) %>%
                 mutate(in_pos = TRUE) %>%
-                select(protein, uhgroup, in_pos),
-            by = c('protein', 'uhgroup')
+                select(protein, hg0, in_pos),
+            by = c('protein', 'hg0')
         ) %>%
         filter(is.na(in_pos)) %>%
-        select(protein, uhgroup) %>%
-        group_by(protein, uhgroup) %>%
+        select(protein, hg0) %>%
+        group_by(protein, hg0) %>%
         summarise_all(first) %>%
         ungroup() %>%
-        arrange(protein, uhgroup)
+        arrange(protein, hg0)
     
     write(sprintf('\n### %s', name), lossfile, append = TRUE)
     write.table(result$lost, lossfile, sep = '\t', quote = FALSE, append = TRUE, col.names = FALSE)
@@ -255,8 +255,8 @@ in_screen <- function(d, condition){
     return(
         d %>%
         filter(!!condition) %>%
-        select(protein, uhgroup) %>%
-        group_by(protein, uhgroup) %>%
+        select(protein, hg0) %>%
+        group_by(protein, hg0) %>%
         summarise_all(first) %>%
         ungroup() %>%
         mutate(inn = TRUE)
@@ -489,7 +489,7 @@ roc_conditions_by_hg <- function(group_sets = FALSE, full_space = FALSE, verbose
     
     write('', file = lossfile)
     
-    by_cols <- c('protein', 'uhgroup')
+    by_cols <- c('protein', 'hg0')
     
     d <- by_hg_df(full_space = full_space)
     
@@ -513,29 +513,29 @@ roc_conditions_by_hg <- function(group_sets = FALSE, full_space = FALSE, verbose
     if(group_sets){
         
         d_any     <- d %>%
-            group_by(protein, uhgroup) %>%
+            group_by(protein, hg0) %>%
             mutate(cls = ifelse('I' %in% cls, 'I', 'II')) %>%
             summarise_if( is.logical, any) %>%
             summarise_if(is.character, first) %>%
             ungroup()
         
         d_ionm    <- d %>%
-            group_by(protein, uhgroup, ionm) %>%
+            group_by(protein, hg0, ionm) %>%
             summarise_if(is.logical, any) %>%
             ungroup()
         
         d_cls     <- d %>%
-            group_by(protein, uhgroup) %>%
+            group_by(protein, hg0) %>%
             summarise_if(is.logical, any) %>%
             ungroup()
         
         d_scr     <- d %>%
-            group_by(protein, uhgroup, screen) %>%
+            group_by(protein, hg0, screen) %>%
             summarise_if(is.logical, any) %>%
             ungroup()
         
         d_scr_cls <- d %>%
-            group_by(protein, uhgroup, screen, cls) %>%
+            group_by(protein, hg0, screen, cls) %>%
             summarise_if(is.logical, any) %>%
             ungroup()
     
@@ -965,7 +965,11 @@ roc_plot <- function(by_hg = FALSE,
             plot.title = element_text(size = 24)
         )
     
-    ggsave(sprintf('%s.pdf', fname), device = cairo_pdf, width = 6, height = 6)
+    pdfname <- sprintf('%s.pdf', fname)
+    
+    cat(sprintf('Plotting into `%s`.', pdfname))
+    
+    ggsave(pdfname, device = cairo_pdf, width = 6, height = 6)
     rocdf %>% write_tsv(sprintf('%s.tsv', fname))
     
 }
