@@ -8,11 +8,26 @@ require(dplyr)
 
 source('results.r')
 
+infile_sa  <- 'stats-antonella.csv'
+infile_se  <- 'stats-enric.csv'
+
 domain_colors <- function(d, col){
     
-    return(col[unique(d$protein)])
+    return(col[unique(as.character(d$protein))])
     
 }
+
+read_stats <- function(){
+    
+    coln <- c('protein', 'ionm', 'stat', 'val')
+    
+    sa <- suppressMessages(read_tsv(infile_sa, col_names = coln))
+    se <- suppressMessages(read_tsv(infile_se, col_names = coln))
+    
+    return(list(sa = sa, se = se))
+    
+}
+
 
 domains_assign_colors <- function(d){
     
@@ -33,6 +48,7 @@ domains_assign_colors <- function(d){
     
 }
 
+
 numof_hgs <- function(){
     
     m <- master_table(output = FALSE)
@@ -49,7 +65,7 @@ numof_hgs <- function(){
         summarise_all(first) %>%
         ungroup() %>%
         arrange(desc(cnt_hg), domain, protein) %>%
-        select(protein, cnt, cnt_hg) %>%
+        select(protein, domain, cnt, cnt_hg) %>%
         mutate(protein = factor(protein, levels = unique(protein), ordered = TRUE))
     
     p <- ggplot(s, aes(x = protein, y = cnt_hg)) +
@@ -60,11 +76,44 @@ numof_hgs <- function(){
         theme(
             text = element_text(family = 'DINPro'),
             axis.text.x = element_text(
-                angle = 90, vjust = 0.5, size = 10, hjust = 1,
+                angle = 90, vjust = 0.5, size = 8, hjust = 1,
                 color = domain_colors(s, dcol)
             )
         )
     
     ggsave('numof_different_hgs.pdf', device = cairo_pdf, width = 6, height = 4)
+    
+    s <- s %>%
+        arrange(desc(cnt), domain, protein) %>%
+        mutate(protein = factor(protein, levels = unique(protein), ordered = TRUE))
+    
+    p <- ggplot(s, aes(x = protein, y = cnt)) +
+        geom_bar(fill = 'black', stat = 'identity') +
+        theme_linedraw() +
+        xlab('Proteins') +
+        ylab('Number of identified features') +
+        theme(
+            text = element_text(family = 'DINPro'),
+            axis.text.x = element_text(
+                angle = 90, vjust = 0.5, size = 8, hjust = 1,
+                color = domain_colors(s, dcol)
+            ),
+            panel.grid = element_blank()
+        )
+    
+    ggsave('numof_features.pdf', device = cairo_pdf, width = 6, height = 4)
+    
+    p <- ggplot(s, aes(x = cnt, y = cnt_hg, label = protein)) +
+    geom_text(color = domain_colors(s, dcol), angle = 30) +
+        scale_x_log10() +
+        scale_y_log10() +
+        theme_linedraw() +
+        xlab('Number of identified features (log)') +
+        ylab('Number of different headgroups (log)') +
+        theme(
+            text = element_text(family = 'DINPro')
+        )
+    
+    ggsave('numof_hgs_features.pdf', device = cairo_pdf, width = 6, height = 6)
     
 }
