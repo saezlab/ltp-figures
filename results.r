@@ -29,8 +29,14 @@ get_pairs <- function(d){
     
 }
 
+select_results <- function(d){
+    
+    d %>% filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
+    
+}
 
-pre_preprocess <- function(d, l, p){
+
+pre_preprocess <- function(d, l, p, result_fun = select_results){
     
     return(
         d %>%
@@ -48,7 +54,7 @@ pre_preprocess <- function(d, l, p){
         left_join(l, by = c('protein', 'hg0')) %>%
         mutate(lit0 = !is.na(lit0)) %>%
         left_join(p, by = c('protein', 'uhgroup')) %>%
-        filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
+        result_fun()
     )
     
 }
@@ -85,7 +91,7 @@ get_results0 <- function(with_hptlc = TRUE){
 
 }
 
-get_results <- function(with_hptlc = TRUE){
+get_results <- function(with_hptlc = TRUE, result_fun = select_results){
     
     r <- get_results0(with_hptlc = with_hptlc)
     a <- r$a
@@ -95,8 +101,8 @@ get_results <- function(with_hptlc = TRUE){
     apairs <- get_pairs(a)
     epairs <- get_pairs(e)
     
-    a <- pre_preprocess(a, l, epairs)
-    e <- pre_preprocess(e, l, apairs)
+    a <- pre_preprocess(a, l, epairs, result_fun = result_fun)
+    e <- pre_preprocess(e, l, apairs, result_fun = result_fun)
     
     result <- list()
     result$a <- a

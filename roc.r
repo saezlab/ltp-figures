@@ -12,6 +12,8 @@ require(purrr)
 require(readr)
 require(tidyr)
 
+source('results.r')
+
 #
 # constants
 #
@@ -27,9 +29,10 @@ lossfile <- 'fall_out.csv'
 
 roc_preprocess_minimal <- function(){
     
-    a  <- read.table(infile_a, sep = '\t', header = TRUE)
-    e  <- read.table(infile_e, sep = '\t', header = TRUE)
-    ae <- rbind(a, e) %>% mutate(lit = lit == 'True')
+    #a  <- read.table(infile_a, sep = '\t', header = TRUE)
+    #e  <- read.table(infile_e, sep = '\t', header = TRUE)
+    r <- get_results(result_fun = function(x){return(x)})
+    ae <- rbind(r$a, r$e)
     
     return(ae)
 
@@ -38,7 +41,7 @@ roc_preprocess_minimal <- function(){
 roc_preprocess_by_hg <- function(){
     
     d <- roc_preprocess_minimal() %>%
-        filter(cls %in% c('I', 'II') & uhgroup != 'P40') %>%
+        filter(cls %in% c('I', 'II') & hg0 != 'P40') %>%
         droplevels()
     
     d <- d %>%
@@ -49,10 +52,8 @@ roc_preprocess_by_hg <- function(){
             i25 = above_quantile(d, 0.25)$q
         )
     
-    #return(d)
-    
     d <- d %>%
-        group_by(protein, ionm, screen, uhgroup) %>%
+        group_by(protein, ionm, screen, hg0) %>%
         summarise(
             lit = first(lit),
             cls = ifelse('I' %in% cls, 'I', 'II'),
@@ -80,12 +81,12 @@ read_literature_ligands <- function(){
     
 }
 
-all_ligands <- function(d, litlig, full_space = FALSE){
+all_ligands <- function(d, litlig, full_space = TRUE){
     
     alllig <- list()
-    alllit <- unique(reduce(litlig, c))
-    allneg <- unique(as.character((d %>% filter(ionm == 'neg'))$uhgroup))
-    allpos <- unique(as.character((d %>% filter(ionm == 'pos'))$uhgroup))
+    alllit <- unique(litlig$hg0)
+    allneg <- unique(as.character((d %>% filter(ionm == 'neg'))$hg0))
+    allpos <- unique(as.character((d %>% filter(ionm == 'pos'))$hg0))
     if(full_space){
         alllig$all <- union(alllit, union(allneg, allpos))
     }else{
@@ -99,33 +100,25 @@ all_ligands <- function(d, litlig, full_space = FALSE){
     
 }
 
-by_hg_df <- function(full_space = FALSE){
+by_hg_df <- function(full_space = TRUE){
     
     allpro <- unique(roc_preprocess_minimal()$protein)
     d      <- roc_preprocess_by_hg()
     
-    if(full_space){
-        d <- d %>%
-            mutate(
-                uhgroup_original = uhgroup,
-                uhgroup = gsub('-O$', '', gsub('^Lyso', '', as.character(uhgroup)))
-            ) %>%
-            filter(!is.na(uhgroup))
-    }
+    d <- d %>% filter(!is.na(hg0))
     
-    litlig <- read_literature_ligands()
+    litlig <- literature_ligands()
     alllig <- all_ligands(d, litlig, full_space = full_space)
-    litlig <- litlig[sapply(litlig, function(x){as.logical(length(intersect(x, alllig$all)))})]
+    # litlig <- litlig[sapply(litlig, function(x){as.logical(length(intersect(x, alllig$all)))})]
     
     if(full_space){
         
-        allpro <- unique(union(allpro, names(litlig)))
+        allpro <- unique(union(allpro, litlig$protein))
         space <- expand.grid(
             protein = unique(d$protein),
-            uhgroup = union(unique(d$uhgroup),
-                            unique(reduce(litlig, c))),
-            ionm = c('neg', 'pos'),
-            screen = c('A', 'E')
+            hg0     = unique(union(d$hg0, litlig$hg0)),
+            ionm    = c('neg', 'pos'),
+            screen  = c('A', 'E')
         )
         
     }else{
@@ -133,35 +126,29 @@ by_hg_df <- function(full_space = FALSE){
         allpro <- names(litlig)
         spacen <- expand.grid(
             protein = allpro,
-            uhgroup = alllig$neg,
-            ionm = c('neg'),
-            screen = c('A', 'E')
+            hg0     = alllig$neg,
+            ionm    = c('neg'),
+            screen  = c('A', 'E')
         )
         spacep <- expand.grid(
             protein = allpro,
-            uhgroup = alllig$pos,
-            ionm = c('pos'),
-            screen = c('A', 'E')
+            hg0     = alllig$pos,
+            ionm    = c('pos'),
+            screen  = c('A', 'E')
         )
         space  <- rbind(spacen, spacep)
     }
-    bycols <- c('protein', 'ionm', 'uhgroup', 'screen')
-    alllit <- unnest(
-        data.frame(
-            protein = names(litlig),
-            uhgroup = I(litlig)
-        )
-    ) %>%
-    mutate(in_lit = TRUE)
+    bycols <- c('protein', 'ionm', 'hg0', 'screen')
+    alllit <- litlig %>% mutate(in_lit = TRUE)
     
     print(sprintf('Size of space is %i.', dim(space)[1]))
     
     d0 <- d %>%
-        filter(uhgroup %in% alllig$all & protein %in% allpro) %>%
-        select(protein, ionm, uhgroup, cls, screen,
+        filter(hg0 %in% alllig$all & protein %in% allpro) %>%
+        select(protein, ionm, hg0, cls, screen,
                lit, detected, i90, i75, i50, i25) %>%
         right_join(space, by = bycols) %>%
-        left_join(alllit, by = c('protein', 'uhgroup')) %>%
+        left_join(alllit, by = c('protein', 'hg0')) %>%
         mutate(
             detected = !is.na(detected),
             lit = !is.na(lit | in_lit)
@@ -904,6 +891,7 @@ roc_conditions <- function(){
     
 }
 
+
 roc_df <- function(by_hg = FALSE, group_sets = FALSE, full_space = FALSE, verbose = FALSE){
     
     if(group_sets){
@@ -920,13 +908,12 @@ roc_df <- function(by_hg = FALSE, group_sets = FALSE, full_space = FALSE, verbos
         
     }
     
-    
-    
     rocdf <- do.call(rbind, lapply(roc, function(r){data.frame(c(list(name = r$name), r$vals))}))
     
     return(as.data.frame(rocdf))
     
 }
+
 
 roc_plot <- function(by_hg = FALSE,
                      group_sets = FALSE,
