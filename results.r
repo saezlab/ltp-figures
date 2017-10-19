@@ -66,6 +66,7 @@ get_results0 <- function(with_hptlc = TRUE){
     
     a <- suppressMessages(read_tsv(infile_a)) %>% mutate(method = 'MS')
     e <- suppressMessages(read_tsv(infile_e)) %>% mutate(method = 'MS')
+    do <- get_domains()
     
     if(with_hptlc){
         
@@ -82,6 +83,14 @@ get_results0 <- function(with_hptlc = TRUE){
             mutate(cls = ifelse(method == 'HPTLC', 'I', cls))
         
     }
+    
+    a <- a %>%
+        select(-domain) %>%
+        left_join(do, by = c('protein'))
+    
+    e <- e %>%
+        select(-domain) %>%
+        left_join(do, by = c('protein'))
     
     result <- list()
     result$a <- a
@@ -321,5 +330,34 @@ literature_ligands <- function(){
         unnest(hg0 = strsplit(hg0, ',')) %>%
         select(protein, hg0) %>%
         mutate(lit0 = TRUE)
+    
+}
+
+
+get_domains <- function(){
+    
+    m <- suppressMessages(read_tsv(infile_master1))
+    
+    return(
+        m %>%
+        rename(
+            protein = default_name,
+            domain = ltd_family
+        ) %>%
+        group_by(protein, domain) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        select(protein, domain) %>%
+        mutate(
+            domain = recode(
+                domain,
+                scp2 = 'Scp2',
+                'NCP1_like' = 'NPC1-like',
+                'LBP_BPI_CETP' = 'LBP/BPI/CETP',
+                'IP_trans' = 'IP-trans',
+                lipocalin = 'Lipocalin'
+            )
+        )
+    )
     
 }
