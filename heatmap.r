@@ -26,7 +26,7 @@ get_legend<-function(a.gplot){
     
 }
 
-summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D2'){
+summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D'){
     
     result <- list()
     
@@ -47,7 +47,11 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D2'
     #cl <- get_protein_ordr(d$c, return_cl = TRUE)
     
     if(wide){
+        
+        h <- d$c %>% group_by(protein, uhgroup)
+        
         cl <- do_clustering(h, protein, uhgroup, lirel, method = method)
+        
         h <- d$c %>%
             mutate(
                 protein = factor(
@@ -62,9 +66,13 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D2'
                 )
             ) %>%
             group_by(protein, uhgroup)
-        
+            
     }else{
+        
+        h <- d$c %>% group_by(protein, hg0)
+        
         cl <- do_clustering(h, protein, hg0, lirel, method = method)
+        
         h <- d$c %>%
             mutate(
                 protein = factor(
@@ -79,12 +87,12 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D2'
                 )
             ) %>%
             group_by(protein, hg0)
-            
+        
     }
     
     h <- h %>%
         mutate(
-            hg0_lit = any(lit),
+            hg0_lit = any(lit0),
             screens = paste0(sort(unique(screen)), collapse = '')
         ) %>%
         mutate(screens = factor(
@@ -104,7 +112,7 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D2'
     
     p <- p +
         geom_tile(aes(fill = screens)) +
-        geom_point(aes(alpha = lit), color = 'white') +
+        geom_point(aes(alpha = hg0_lit), color = 'white') +
         scale_alpha_manual(
             guide = guide_legend(title = 'Novelty'),
             values = c(
@@ -141,7 +149,10 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D2'
     
     if(!dendrogram){
         ggsave(pdfname, device = cairo_pdf, width = width, height = height)
-        return(h)
+        result <- list()
+        result$data <- h
+        result$heatmap <- p
+        return(result)
     }
     
     # plotting dendrograms

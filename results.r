@@ -7,28 +7,56 @@ require(readr)
 require(dplyr)
 
 source('clustering.r')
+source('lipid_classes.r')
+source('proteins.r')
 
 infile_a   <- 'antonella_final.csv'
 infile_e   <- 'enric_processed.csv'
 infile_t   <- 'ltp_hptlc_static.tsv'
 
-get_results <- function(with_hptlc = TRUE){
+
+get_pairs <- function(d){
+    
+    return(
+        d %>%
+        filter(cls %in% c('I', 'II')) %>%
+        select(protein, uhgroup) %>%
+        group_by(protein, uhgroup) %>%
+        summarise_all(first) %>%
+        ungroup() %>%
+        mutate(in_other = TRUE)
+    )
+    
+}
+
+
+pre_preprocess <- function(d, l, p){
+    
+    return(
+        d %>%
+        mutate(
+            lit = lit == 'True',
+            hg0 = gsub('-O$', '', gsub('^Lyso', '', as.character(uhgroup)))
+        ) %>%
+        mutate(
+            hg0 = recode(
+                hg0,
+                CH = 'Sterols',
+                PIP = 'PIPs'
+            )
+        ) %>%
+        left_join(l, by = c('protein', 'hg0')) %>%
+        mutate(lit0 = !is.na(lit0)) %>%
+        left_join(p, by = c('protein', 'uhgroup')) %>%
+        filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
+    )
+    
+}
+
+
+get_results0 <- function(with_hptlc = TRUE){
     
     by_t <- c('protein', 'uhgroup', 'screen', 'method')
-    
-    get_pairs <- function(d){
-        
-        return(
-            d %>%
-            filter(cls %in% c('I', 'II')) %>%
-            select(protein, uhgroup) %>%
-            group_by(protein, uhgroup) %>%
-            summarise_all(first) %>%
-            ungroup() %>%
-            mutate(in_other = TRUE)
-        )
-        
-    }
     
     a <- suppressMessages(read_tsv(infile_a)) %>% mutate(method = 'MS')
     e <- suppressMessages(read_tsv(infile_e)) %>% mutate(method = 'MS')
@@ -49,18 +77,26 @@ get_results <- function(with_hptlc = TRUE){
         
     }
     
+    result <- list()
+    result$a <- a
+    result$e <- e
+    
+    return(result)
+
+}
+
+get_results <- function(with_hptlc = TRUE){
+    
+    r <- get_results0(with_hptlc = with_hptlc)
+    a <- r$a
+    e <- r$e
+    
+    l <- literature_ligands()
     apairs <- get_pairs(a)
     epairs <- get_pairs(e)
     
-    a <- a %>%
-        mutate(lit = lit == 'True') %>%
-        left_join(epairs, by = c('protein', 'uhgroup')) %>%
-        filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
-    
-    e <- e %>%
-        mutate(lit = lit == 'True') %>%
-        left_join(apairs, by = c('protein', 'uhgroup')) %>%
-        filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
+    a <- pre_preprocess(a, l, epairs)
+    e <- pre_preprocess(e, l, apairs)
     
     result <- list()
     result$a <- a
@@ -74,10 +110,10 @@ get_results <- function(with_hptlc = TRUE){
 }
 
 
-preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2'){
+preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2', with_hptlc = TRUE){
     
     result <- list()
-    r <- get_results()
+    r <- get_results(with_hptlc = with_hptlc)
     
     # preprocessing
     ae <- bind_rows(r$a, r$e) %>%
@@ -95,7 +131,6 @@ preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2'){
         mutate(irel = ihg / itotal) %>%
         mutate(lirel = log10(1 + irel)) %>%
         ungroup() %>%
-        mutate(hg0 = gsub('-O$', '', gsub('^Lyso', '', as.character(uhgroup)))) %>%
         mutate(grp = ifelse(
             hg0 %in% gpl, 'GPL', ifelse(
             hg0 %in% gl, 'GL', ifelse(
@@ -193,5 +228,92 @@ preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2'){
     )
     
     return(result)
+    
+}
+
+
+master_table <- function(output = TRUE){
+    
+    hdr <- c(
+        'Default name',
+        'Synonyms',
+        'UniProt ID',
+        'LTD family',
+        'Literature ligands',
+        'Mammalian ligands main categories',
+        'Non-mammalian ligands',
+        'Tested in vitro',
+        'Tested in vivo',
+        'Number of ligands in final result in vivo (unique m/z)',
+        'Ligands identified in vivo',
+        'Number of ligands in final result in vitro (unique m/z)',
+        'Ligands identified in vitro'
+    )
+    
+    r <- get_results0()
+    p <- proteins_preprocess() %>%
+        mutate(in_invivo = screen %in% c('A', 'AE'),
+               in_invitro = screen %in% c('E', 'AE')) %>%
+        select(protein, in_invitro, in_invivo)
+    m1 <- suppressMessages(read_tsv(infile_master1))
+    
+    ra <- r$a %>%
+        group_by(protein) %>%
+        mutate(invivo_count = n(), invivo_binders = paste0(sort(unique(uhgroup)), collapse = ',')) %>%
+        summarise_all(first) %>%
+        select(protein, invivo_count, invivo_binders)
+    
+    re <- r$e %>%
+        group_by(protein) %>%
+        mutate(invitro_count = n(), invitro_binders = paste0(sort(unique(uhgroup)), collapse = ',')) %>%
+        summarise_all(first) %>%
+        select(protein, invitro_count, invitro_binders)
+    
+    m <- m1 %>%
+        mutate(protein = default_name) %>%
+        left_join(p, by = c('protein')) %>%
+        mutate(in_invitro = ifelse(is.na(in_invitro), FALSE, in_invitro),
+               in_invivo = ifelse(is.na(in_invivo), FALSE, in_invivo)) %>%
+        left_join(ra, by = c('protein')) %>%
+        left_join(re, by = c('protein')) %>%
+        mutate(
+            invitro_count   = ifelse(is.na(invitro_count), 0, invitro_count),
+            invivo_count   = ifelse(is.na(invivo_count), 0, invivo_count)
+        ) %>%
+        arrange(desc(invivo_count), desc(invitro_count), desc(in_invitro), desc(in_invivo)) %>%
+        select(default_name:non_mammalian_ligands, in_invivo, in_invitro, invivo_count:invitro_binders)
+    
+    if(output){
+        
+        write_tsv(as.data.frame(t(hdr)), 'master_part2.tsv', col_names = FALSE)
+        write_tsv(m %>% filter(in_invivo | in_invitro), 'master_part2.tsv', append = TRUE)
+        write('\nNon tested LTPs:', file = 'master_part2.tsv', append = TRUE)
+        write_tsv(as.data.frame(t(hdr)), 'master_part2.tsv', append = TRUE)
+        write_tsv(m %>% filter(!in_invivo & !in_invitro), 'master_part2.tsv', append = TRUE)
+        
+    }
+    
+    result <- list()
+    result$a  <- r$a
+    result$ra <- ra
+    result$re <- re
+    result$m  <- m
+    result$p  <- p
+    
+    invisible(return(result))
+    
+}
+
+literature_ligands <- function(){
+    
+    m <- master_table(output = FALSE)$m %>%
+        rename(
+            protein = default_name,
+            hg0 = mammalian_ligand_categories
+        ) %>%
+        filter(!is.na(hg0)) %>%
+        unnest(hg0 = strsplit(hg0, ',')) %>%
+        select(protein, hg0) %>%
+        mutate(lit0 = TRUE)
     
 }

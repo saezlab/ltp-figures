@@ -63,7 +63,7 @@ do_clustering <- function(d, x, y, v, method = 'ward.D2'){
     res$y  <- cly
     res$dx <- dix
     res$dy <- diy
-    res$a  <- a
+    res$a  <- adj
     
     return(res)
     
