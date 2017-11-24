@@ -5,7 +5,6 @@
 
 source('results.r')
 source('clustering.r')
-source('lipid_classes.r')
 
 # apply a multiplier in the lipid section
 # in order to have enough space for labels
@@ -32,15 +31,6 @@ preprocess0 <- function(cluster_proteins = FALSE){
         mutate(irel = ihg / itotal) %>%
         mutate(lirel = log10(1 + irel)) %>%
         ungroup() %>%
-        mutate(hg0 = gsub('-O$', '', gsub('^Lyso', '', as.character(uhgroup)))) %>%
-        mutate(grp = ifelse(
-            hg0 %in% gpl, 'GPL', ifelse(
-            hg0 %in% gl, 'GL', ifelse(
-            hg0 %in% fa, 'FA', ifelse(
-            hg0 %in% ch, 'CH', ifelse(
-            hg0 %in% sph, 'SPH', ifelse(
-            hg0 %in% vit, 'VIT', NA
-        ))))))) %>%
         mutate(hgcc0 = ifelse(is.na(hgcc), uhgroup, hgcc)) %>%
         group_by(grp) %>%
         mutate(cnt_grp = n()) %>%

@@ -26,14 +26,19 @@ get_legend<-function(a.gplot){
     
 }
 
-summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D'){
+summary_heatmap <- function(wide = FALSE,
+                            dendrogram = FALSE,
+                            method = 'ward.D',
+                            supervised = FALSE){
+    
+    dendrogram <- !supervised | dendrogram
     
     result <- list()
     
     pdfname <- sprintf(
         'ms-summary-heatmap%s%s%s.pdf',
         ifelse(wide, '-w', ''),
-        ifelse(dendrogram, '-d', ''),
+        ifelse(dendrogram, '-d', ifelse(supervised, '-s', '')),
         ifelse(dendrogram, sprintf('-%s', method), '')
     )
     width   <- ifelse(wide, 7.2, 5.7)
@@ -104,6 +109,31 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D')
         ungroup()
         #mutate(protein = factor(protein, levels = cl, ordered = TRUE))
     
+    if(supervised){
+        
+        h <- h %>%
+            arrange(domain, protein) %>%
+            mutate(
+                protein = factor(protein, levels = unique(protein), ordered = TRUE)
+            )
+        
+        if(wide){
+            h <- h %>%
+                mutate(grp = factor(grp, levels = grp_ordr, ordered = TRUE)) %>%
+                arrange(grp, uhgroup) %>%
+                mutate(
+                    uhgroup = factor(uhgroup, levels = unique(uhgroup), ordered = TRUE)
+                )
+        }else{
+            h <- h %>%
+                mutate(grp = factor(grp, levels = grp_ordr, ordered = TRUE)) %>%
+                arrange(grp, hg0) %>%
+                mutate(
+                    hg0 = factor(hg0, levels = unique(hg0), ordered = TRUE)
+                )
+        }
+    }
+    
     if(wide){
         p <- ggplot(h, aes(y = protein, x = uhgroup))
     }else{
@@ -148,6 +178,24 @@ summary_heatmap <- function(wide = FALSE, dendrogram = FALSE, method = 'ward.D')
         )
     
     if(!dendrogram){
+        
+        dcol <- domains_assign_colors(h)
+        
+        if(supervised){
+            p <- p + theme(axis.text.y = element_text(color = domain_colors(h, dcol)))
+            
+            var <- ifelse(wide, 'uhgroup', 'hg0')
+            
+            lcol <- lipid_groups_assign_colors(h, var)
+            p <- p +
+                theme(
+                    axis.text.x = element_text(
+                        color = lipid_colors(h, var, lcol),
+                        angle = 90, vjust = 0.5, size = 10, hjust = 1
+                    )
+                )
+        }
+        
         ggsave(pdfname, device = cairo_pdf, width = width, height = height)
         result <- list()
         result$data <- h

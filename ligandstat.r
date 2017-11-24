@@ -8,46 +8,6 @@ require(dplyr)
 
 source('results.r')
 
-infile_sa  <- 'stats-antonella.csv'
-infile_se  <- 'stats-enric.csv'
-
-domain_colors <- function(d, col){
-    
-    return(col[unique(as.character(d$protein))])
-    
-}
-
-read_stats <- function(){
-    
-    coln <- c('protein', 'ionm', 'stat', 'val')
-    
-    sa <- suppressMessages(read_tsv(infile_sa, col_names = coln))
-    se <- suppressMessages(read_tsv(infile_se, col_names = coln))
-    
-    return(list(sa = sa, se = se))
-    
-}
-
-
-domains_assign_colors <- function(d){
-    
-    dcolors <- c('#3A7AB3', '#608784', '#03928C', '#CF5836', '#7575BE',
-                '#D6708B', '#65B9B9', '#69B3D6', '#C441B3', '#9B998D')
-    
-    names(dcolors) <- sort(unique(na.omit(d$domain)))
-    
-    dprotein <- list()
-    for(i in 1:dim(d)[1]){
-        dprotein[[as.character(d$protein[i])]] <- as.character(d$domain[i])
-    }
-    
-    pcolors <- as.character(dcolors[as.character(dprotein)])
-    names(pcolors) <- names(dprotein)
-    
-    return(pcolors)
-    
-}
-
 
 numof_hgs <- function(){
     
@@ -78,7 +38,8 @@ numof_hgs <- function(){
             axis.text.x = element_text(
                 angle = 90, vjust = 0.5, size = 8, hjust = 1,
                 color = domain_colors(s, dcol)
-            )
+            ),
+            panel.grid = element_blank()
         )
     
     ggsave('numof_different_hgs.pdf', device = cairo_pdf, width = 6, height = 4)

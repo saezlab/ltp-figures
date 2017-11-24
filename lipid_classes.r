@@ -3,10 +3,10 @@
 # Dénes Türei EMBL 2017
 # turei.denes@gmail.com
 
-gpl <- c('PE', 'PC', 'PG', 'PA', 'PI', 'PS', 'PG/BMP', 'BMP')
+gpl <- c('PE', 'PC', 'PG', 'PA', 'PI', 'PS', 'PG/BMP', 'BMP', 'PIPs')
 gl <- c('DAG', 'TAG', 'MAG')
 fa <- c('FA')
-ch <- c('CH', 'HCH')
+ch <- c('CH', 'HCH', 'Sterols')
 sph <- c('SM', 'Sph', 'SphP', 'Cer', 'CerP', 'HexCer',
          'HexCerOH', 'Hex2Cer', 'Hex2CerOH', 'SHexCer')
 vit <- c('VE', 'VA', 'VD')

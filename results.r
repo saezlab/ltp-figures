@@ -13,6 +13,12 @@ source('proteins.r')
 infile_a   <- 'antonella_final.csv'
 infile_e   <- 'enric_processed.csv'
 infile_t   <- 'ltp_hptlc_static.tsv'
+infile_sa  <- 'stats-antonella.csv'
+infile_se  <- 'stats-enric.csv'
+
+max_deltart <- 0.5
+neg_min_int <-  30000
+pos_min_int <- 150000
 
 
 get_pairs <- function(d){
@@ -31,7 +37,11 @@ get_pairs <- function(d){
 
 select_results <- function(d){
     
-    d %>% filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40')
+    (
+        d %>%
+        filter((cls == 'I' | (cls == 'II' & in_other)) & uhgroup != 'P40') %>%
+        remove_lowintensity_classII()
+    )
     
 }
 
@@ -51,10 +61,33 @@ pre_preprocess <- function(d, l, p, result_fun = select_results){
                 PIP = 'PIPs'
             )
         ) %>%
+        mutate(grp = ifelse(
+            hg0 %in% gpl, 'GPL', ifelse(
+            hg0 %in% gl, 'GL', ifelse(
+            hg0 %in% fa, 'FA', ifelse(
+            hg0 %in% ch, 'CH', ifelse(
+            hg0 %in% sph, 'SPH', ifelse(
+            hg0 %in% vit, 'VIT', NA
+        ))))))) %>%
         left_join(l, by = c('protein', 'hg0')) %>%
         mutate(lit0 = !is.na(lit0)) %>%
         left_join(p, by = c('protein', 'uhgroup')) %>%
         result_fun()
+    )
+    
+}
+
+
+remove_lowintensity_classII <- function(d){
+    
+    (
+        d %>%
+        filter(cls == 'I' | (
+                ionm == 'pos' & intensity >= pos_min_int
+            ) | (
+                ionm == 'neg' & intensity >= neg_min_int
+            )
+        )
     )
     
 }
@@ -95,6 +128,7 @@ get_results0 <- function(with_hptlc = TRUE){
     result <- list()
     result$a <- a
     result$e <- e
+    result$t <- t
     
     return(result)
 
@@ -117,7 +151,7 @@ get_results <- function(with_hptlc = TRUE, result_fun = select_results){
     result$a <- a
     result$e <- e
     if(with_hptlc){
-        result$t <- t
+        result$t <- r$t
     }
     
     return(result)
@@ -131,10 +165,13 @@ preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2', with_hptlc
     r <- get_results(with_hptlc = with_hptlc)
     
     # preprocessing
+    # here we calculate relative intensities
+    # and log relative intensities
+    # relative means proportion in total intensities
+    # of all identified features
+    # HPTLC results are not yet added, this
+    # is fine becaues those does not have intensities
     ae <- bind_rows(r$a, r$e) %>%
-        group_by(protein, uhgroup) %>%
-        mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
-        ungroup() %>%
         group_by(protein) %>%
         group_by(protein, ionm, screen, uhgroup, cls) %>%
         mutate(ihg = sum(as.numeric(intensity))) %>%
@@ -145,6 +182,21 @@ preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2', with_hptlc
         group_by(protein, ionm, screen, uhgroup, cls) %>%
         mutate(irel = ihg / itotal) %>%
         mutate(lirel = log10(1 + irel)) %>%
+        ungroup()
+    
+    if(with_hptlc){
+        
+        # here we add the rows from the HPTLC dataset
+        ae <- ae %>%
+            full_join(r$t, by = c('protein', 'uhgroup', 'screen', 'method'))
+        
+    }
+    
+    # below we introduce hg0 which is a less detailed grouping of headgroups
+    # and we count number of connections within various groups
+    ae <- ae %>%
+        group_by(protein, uhgroup) %>%
+        mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
         ungroup() %>%
         mutate(grp = ifelse(
             hg0 %in% gpl, 'GPL', ifelse(
@@ -163,16 +215,38 @@ preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2', with_hptlc
         ungroup() %>%
         group_by(protein) %>%
         mutate(cnt_pro = n()) %>%
+        ungroup() %>%
+        group_by(domain) %>%
+        mutate(cnt_dom = n()) %>%
+        ungroup() %>%
+        group_by(uhgroup, domain) %>%
+        mutate(cnt_hg_dom = n()) %>%
+        ungroup() %>%
+        group_by(protein, uhgroup) %>%
+        mutate(cnt_hg_pro = n()) %>%
         ungroup()
     
+    # we either cluster proteins by their binders or
+    # order by their domains and then alphabetically
     if(cluster_proteins){
         
         protein_ordr <- get_protein_ordr(ae, method = method)
         
+    }else{
+        
+        protein_ordr <- unique(
+            (
+                ae %>%
+                arrange(domain, protein)
+            )$protein
+        )
+        
     }
     
+    # building a lipid oriented data frame
     l <- ae %>%
-        select(uhgroup, hg0, grp, hgcc0, screen, cnt_grp, cnt_hg) %>%
+        select(protein, domain, uhgroup, hg0, grp, hgcc0, screen,
+               cnt_grp, cnt_hg, cnt_hg_dom, cnt_hg_pro) %>%
         group_by(hg0) %>%
         mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
         ungroup() %>%
@@ -180,54 +254,30 @@ preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2', with_hptlc
         summarise_all(first) %>%
         ungroup() %>%
         mutate(grp = factor(grp, levels = grp_ordr, ordered = TRUE)) %>%
-        arrange(grp, hg0, uhgroup, hgcc0) %>%
+        # here we order by lipid classification and within uhgroups
+        # we order the connections by domain
+        arrange(grp, hg0, uhgroup, domain, protein) %>%
         mutate(
             hg0 = factor(hg0, levels = unique(hg0), ordered = TRUE),
-            uhgroup = factor(uhgroup, levels = unique(uhgroup), ordered = TRUE),
-            hgcc0 = factor(hgcc0, levels = unique(hgcc0), ordered = TRUE)
+            uhgroup = factor(uhgroup, levels = unique(uhgroup), ordered = TRUE)
         )
     
+    # building a protein oriented data frame
+    # ordering is defined by protein_ordr
     p <- ae %>%
-        select(protein, screen, cnt_pro) %>%
+        select(protein, domain, screen, cnt_pro, grp) %>%
         group_by(protein) %>%
         mutate(screens = paste0(sort(unique(screen)), collapse = '')) %>%
         summarise_all(first) %>%
-        ungroup()
-    
-    if(cluster_proteins){
-        
-        # ordering by proteins
-        p <- p %>%
-            mutate(
-                protein = factor(
-                    protein,
-                    levels = protein_ordr,
-                    ordered = TRUE
-                )
-            ) %>%
-            arrange(protein)
-        
-    }else{
-        
-        # ordering by screens
-        p <- p %>%
-            mutate(
-                screens = factor(
-                    screens,
-                    levels = scr_ordr,
-                    ordered = TRUE
-                )
-            ) %>%
-            arrange(screens, protein) %>%
-            mutate(
-                protein = factor(
-                    protein,
-                    levels = unique(protein),
-                    ordered = TRUE
-                )
+        ungroup() %>%
+        mutate(
+            protein = factor(
+                protein,
+                levels = protein_ordr,
+                ordered = TRUE
             )
-        
-    }
+        ) %>%
+        arrange(protein)
     
     # full list of connections:
     result$c <- ae
@@ -236,11 +286,7 @@ preprocess0 <- function(cluster_proteins = FALSE, method = 'ward.D2', with_hptlc
     # all proteins:
     result$p <- p
     # proteins order:
-    result$pordr <- switch(
-        cluster_proteins,
-        protein_ordr,
-        unique(p$protein)
-    )
+    result$pordr <- protein_ordr
     
     return(result)
     
@@ -358,6 +404,98 @@ get_domains <- function(){
                 lipocalin = 'Lipocalin'
             )
         )
+    )
+    
+}
+
+
+domain_colors <- function(d, col){
+    
+    return(col[as.character(levels(factor(d$protein)))])
+    
+}
+
+lipid_colors <- function(d, var, col){
+    
+    return(col[unique(as.character(d[[var]]))])
+    
+}
+
+read_stats <- function(){
+    
+    coln <- c('protein', 'ionm', 'stat', 'val')
+    
+    sa <- suppressMessages(read_tsv(infile_sa, col_names = coln))
+    se <- suppressMessages(read_tsv(infile_se, col_names = coln))
+    
+    return(list(sa = sa, se = se))
+    
+}
+
+
+assign_colors <- function(d, var, grp_var, cols = NULL){
+    
+    groups <- levels(factor(d[[grp_var]]))
+    
+    if(is.null(cols)){
+        cols <- c('#3A7AB3', '#608784', '#03928C', '#CF5836', '#7575BE',
+                  '#D6708B', '#65B9B9', '#69B3D6', '#C441B3', '#9B998D')
+    }
+    
+    cols <- cols[1:length(groups)]
+    
+    gc <- bind_cols(list(g = groups, c = cols))
+    
+    print(d[[var]])
+    print(var)
+    
+    v <- as_tibble(list(var = levels(factor(d[[var]]))))
+    names(v) <- var
+    
+    vg <- d %>%
+        select_(grp_var, var) %>%
+        group_by_(grp_var, var) %>%
+        summarise_all(first)
+    
+    
+    vc <- v %>%
+        inner_join(vg, by = var)
+    
+    vc <- vc %>%
+        inner_join(gc, by = setNames('g', grp_var)) %>%
+        select_(var, 'c')
+    
+    ord_col <- vc$c
+    names(ord_col) <- vc[[var]]
+    
+    return(ord_col)
+    
+    names(cols) <- sort(unique(d[[grp_var]]))
+    
+    grp_col <- list()
+    for(i in 1:dim(d)[1]){
+        grp_col[[as.character(d[[var]][i])]] <- as.character(d[[grp_var]][i])
+    }
+    
+    ord_col <- as.character(cols[as.character(grp_col)])
+    names(ord_col) <- names(grp_col)
+    
+    return(ord_col)
+    
+}
+
+domains_assign_colors <- function(d){
+    
+    return(
+        assign_colors(d, 'protein', 'domain')
+    )
+    
+}
+
+lipid_groups_assign_colors <- function(d, var = 'hg0'){
+    
+    return(
+        assign_colors(d, var, 'grp')
     )
     
 }

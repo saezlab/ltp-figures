@@ -156,7 +156,7 @@ def find_constitutions(
                     results = []
     ):
     c = int(np.ceil((target - 2) / ltp2.MolWeight('CH2').weight))
-    h = ltp2.mas.mass['H']
+    h = ltp2.mas.mass['H'] 
     counts = dict(zip(elems, [0] * len(elems)))
     counts['C'] = c
     counts['H'] = int(np.round((target - ltp2.MolWeight('C%u' % c)) / h))
