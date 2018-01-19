@@ -7,7 +7,7 @@ require(dplyr)
 require(tibble)
 require(tidyr)
 
-get_protein_ordr <- function(ae, return_cl = FALSE, method = 'ward.D2'){
+clustering.get_protein_ordr <- function(ae, return_cl = FALSE, method = 'ward.D2'){
     
     adj <- ae %>%
         group_by(protein, uhgroup) %>%
@@ -35,7 +35,7 @@ get_protein_ordr <- function(ae, return_cl = FALSE, method = 'ward.D2'){
     
 }
 
-do_clustering <- function(d, x, y, v, method = 'ward.D2'){
+clustering.do_clustering <- function(d, x, y, v, method = 'ward.D2'){
     
     res <- list()
     xs <- deparse(substitute(x))

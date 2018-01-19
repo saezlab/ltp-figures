@@ -29,7 +29,7 @@ infile_master1 <- 'master_part1.csv'
 # functions
 #
 
-proteins_preprocess <- function(){
+proteins.preprocess <- function(){
     
     scoln <- c('protein', 'ionm', 'stat', 'cnt')
     
@@ -94,7 +94,7 @@ proteins_preprocess <- function(){
     
 }
 
-proteins_plot <- function(){
+proteins.plot <- function(){
     
     fname <- 'proteins'
     

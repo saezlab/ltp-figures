@@ -36,7 +36,7 @@ summary_heatmap <- function(wide = FALSE,
     result <- list()
     
     pdfname <- sprintf(
-        'ms-summary-heatmap%s%s%s.pdf',
+        'plots/ms-summary-heatmap%s%s%s.pdf',
         ifelse(wide, '-w', ''),
         ifelse(dendrogram, '-d', ifelse(supervised, '-s', '')),
         ifelse(dendrogram, sprintf('-%s', method), '')

@@ -4,6 +4,7 @@
 # turei.denes@gmail.com
 
 gpl <- c('PE', 'PC', 'PG', 'PA', 'PI', 'PS', 'PG/BMP', 'BMP', 'PIPs')
+lyso.gpl <- c('PE', 'PC', 'PG', 'PA', 'PI', 'PS', 'DAG', 'FA')
 gl <- c('DAG', 'TAG', 'MAG')
 fa <- c('FA')
 ch <- c('CH', 'HCH', 'Sterols')
@@ -13,3 +14,4 @@ vit <- c('VE', 'VA', 'VD')
 
 grp_ordr <- c('GPL', 'GL', 'FA', 'SPH', 'CH', 'VIT')
 scr_ordr <- c('A', 'AE', 'E')
+mss <- c('MSA', 'MSE')

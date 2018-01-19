@@ -7,7 +7,7 @@ require(ggplot2)
 require(dplyr)
 require(lazyeval)
 require(stringr)
-require(ggrepel)
+#require(ggrepel)
 
 #
 # constants
